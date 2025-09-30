@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
-import user_from_file
-
+import module.user_from_file as user_from_file
+import module.get_free_vmid as get_free_vmid
+import os
 
 from proxmoxer import ProxmoxAPI
 proxmox = ProxmoxAPI(
@@ -14,34 +15,8 @@ nodes=proxmox.nodes.get()
 node_names = [node['node'] for node in nodes]
     ### Считывание пользователей из файла users.txt в массив user_list
 user_list=user_from_file.users() 
-#print(user_list)
-def choice_node():
-    count=user_list%len(node_names)
-    print(count)
 
-def get_free_vmid(proxmox, start_from=100):
-    """
-    Находит первый свободный VMID в кластере.
-    
-    :param proxmox: экземпляр ProxmoxAPI
-    :param start_from: с какого ID начинать поиск
-    :return: свободный VMID
-    """
-    used_ids = set()
 
-    # Получаем все ресурсы кластера
-    resources = proxmox.cluster.resources.get()
-    
-    for resource in resources:
-        if 'vmid' in resource:  # это ВМ (qemu) или контейнер (lxc)
-            used_ids.add(resource['vmid'])
-
-    # Ищем первый свободный ID
-    vmid = start_from
-    while vmid in used_ids:
-        vmid += 1
-
-    return vmid
 
 def main():
     
@@ -65,7 +40,7 @@ def main():
             )
             print('Пул', user.split('@')[0], 'существует!')
         ### клонирование машины altsrv
-        new_vmid = get_free_vmid(proxmox, start_from=100)
+        new_vmid = get_free_vmid.get_free_vmid(proxmox, start_from=1000)
         proxmox.nodes('SRV1-PVE').qemu('100').clone.post(
             newid=new_vmid,
             target=node_claster,
