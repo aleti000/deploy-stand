@@ -49,3 +49,33 @@ python3 main.py
 ```bash 
 pip3 install -r requirements.txt
 ```
+</details>
+
+<details>
+<summary>
+Инструкция по настройке сети:
+</summary>
+
+При указывании сетевого адаптера необходимо указывать vmbr0 - для интернета. (В данном релизе не поддерживаются другие адаптеры которые можно указать явно)
+
+Пример:
+
+```
+machines:
+- device_type: ecorouter
+  name: eco
+  networks:
+  - bridge: vmbr0
+  - bridge: hq
+  template_node: SRV1-PVE
+  template_vmid: 100
+- device_type: linux
+  name: lin
+  networks:
+  - bridge: hq
+  template_node: SRV1-PVE
+  template_vmid: 101
+```
+В данном конфигурационном файле hq означает сеть которая будет создана (vmbr1000+), hq является псевдонимом будущего созданного моста.
+
+</details>
