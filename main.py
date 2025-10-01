@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 import sys
-from cli_menus import MainMenu
+from app.ui.cli_menus import MainMenu
 
 def main():
     try:

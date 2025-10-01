@@ -1,0 +1,14 @@
+machines:
+- device_type: ecorouter
+  name: eco
+  networks:
+  - bridge: vmbr0
+  - bridge: hq
+  template_node: SRV1-PVE
+  template_vmid: 100
+- device_type: linux
+  name: lin
+  networks:
+  - bridge: hq
+  template_node: SRV1-PVE
+  template_vmid: 101
