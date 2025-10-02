@@ -52,6 +52,14 @@ class ConfigManager:
                 for j in range(num_networks):
                     bridge = input(f"Имя bridge для сетевой карты {j+1} (например vmbr0): ")
                     machine_config['networks'].append({'bridge': bridge})
+
+                # Выбор типа клонирования
+                print("Тип клонирования:")
+                print("1) Linked clone (быстрое создание, экономит место)")
+                print("2) Full clone (полная копия, независимая от шаблона)")
+                clone_choice = input("Выберите тип клонирования (1/2) [1]: ").strip()
+                machine_config['full_clone'] = clone_choice == '2'
+
                 config['machines'].append(machine_config)
             with open(CONFIG_FILE, 'w') as f:
                 yaml.dump(config, f, default_flow_style=False, allow_unicode=True)
@@ -88,5 +96,3 @@ class ConfigManager:
         with open(USERS_FILE, 'r') as f:
             data = yaml.safe_load(f)
             return data.get('users', [])
-
-

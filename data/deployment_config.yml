@@ -1,14 +1,16 @@
 machines:
 - device_type: linux
-  name: GW
+  full_clone: false
+  name: gw
   networks:
   - bridge: vmbr0
   - bridge: hq
-  template_node: PVE1
+  template_node: SRV1-PVE
   template_vmid: 100
 - device_type: linux
-  name: wks
+  full_clone: false
+  name: hq
   networks:
   - bridge: hq
-  template_node: PVE1
-  template_vmid: 101
+  template_node: SRV1-PVE
+  template_vmid: 100
