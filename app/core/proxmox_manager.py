@@ -99,7 +99,7 @@ class ProxmoxManager:
     def clone_vm(self, template_node: str, template_vmid: int, 
                  target_node: str, new_vmid: int, name: str, pool: str | None) -> bool:
         try:
-            clone_params = {'newid': new_vmid, 'name': name, 'target': target_node, 'full': 0}
+            clone_params = {'newid': new_vmid, 'name': name, 'target': target_node, 'full': 1}
             if pool:
                 clone_params['pool'] = pool
             task = self.proxmox.nodes(template_node).qemu(template_vmid).clone.post(**clone_params)

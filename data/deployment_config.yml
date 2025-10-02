@@ -1,13 +1,13 @@
 machines:
-- device_type: ecorouter
-  name: Eco
+- device_type: linux
+  name: GW
   networks:
   - bridge: vmbr0
   - bridge: hq
   template_node: PVE1
-  template_vmid: 103
+  template_vmid: 100
 - device_type: linux
-  name: lin
+  name: wks
   networks:
   - bridge: hq
   template_node: PVE1
