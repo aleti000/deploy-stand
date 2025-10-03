@@ -25,7 +25,9 @@ class VMDeployer:
     def deploy_configuration(self, users: List[str], config: dict[str, Any],
                            node_selection: str = None, target_node: str = None) -> dict[str, str]:
         # Загружаем существующие локальные шаблоны из конфигурации
+        print("🔍 Загружаем локальные шаблоны из конфигурации...")
         self.load_local_templates_from_config()
+        print(f"📋 Загружено локальных шаблонов: {len(self.local_templates)}")
 
         results = {}
         nodes = self.proxmox.get_nodes()
@@ -119,14 +121,13 @@ class VMDeployer:
                     while not self.proxmox.check_vmid_unique(temp_vmid):
                         temp_vmid += 1
 
-                    template_create_ok = self.proxmox.clone_vm(
+                    template_create_ok = self.proxmox._create_local_template_for_linked_clone(
                         template_node=template_node,
                         template_vmid=original_template_vmid,
                         target_node=target_node,
                         new_vmid=temp_vmid,
                         name=f"template-{original_template_vmid}-{target_node}",
-                        pool=pool,
-                        full_clone=False  # Это вызовет автоматическое создание локального шаблона
+                        pool=pool
                     )
 
                     if template_create_ok:
@@ -135,6 +136,10 @@ class VMDeployer:
                         actual_template_vmid = temp_vmid
                         actual_template_node = target_node
                         print(f"✅ Локальный шаблон создан и готов к использованию")
+
+                        # Немедленно сохраняем локальный шаблон в конфигурацию
+                        print(f"💾 Сохраняем локальный шаблон в конфигурацию...")
+                        self.save_local_templates_to_config()
                     else:
                         print(f"❌ Не удалось создать локальный шаблон для linked clone")
                         print(f"🔄 Попытка использования полного клонирования как запасного варианта...")
@@ -151,15 +156,30 @@ class VMDeployer:
 
             print(f"📋 Клонирование шаблона VMID {actual_template_vmid} с ноды '{actual_template_node}' на ноду '{target_node}'")
 
-            clone_ok = self.proxmox.clone_vm(
-                template_node=actual_template_node,
-                template_vmid=actual_template_vmid,
-                target_node=target_node,
-                new_vmid=new_vmid,
-                name=machine_config['name'],
-                pool=pool,
-                full_clone=machine_config.get('full_clone', False)
-            )
+            # Используем обычный linked clone если шаблон на той же ноде
+            if actual_template_node == target_node:
+                # Клонирование на той же ноде - используем обычный linked clone
+                print(f"🔄 Создаем linked clone на той же ноде '{target_node}' из шаблона VMID {actual_template_vmid}")
+                clone_ok = self.proxmox.clone_vm(
+                    template_node=actual_template_node,
+                    template_vmid=actual_template_vmid,
+                    target_node=target_node,
+                    new_vmid=new_vmid,
+                    name=machine_config['name'],
+                    pool=pool,
+                    full_clone=False  # linked clone
+                )
+            else:
+                # Используем обычный метод клонирования для других случаев
+                clone_ok = self.proxmox.clone_vm(
+                    template_node=actual_template_node,
+                    template_vmid=actual_template_vmid,
+                    target_node=target_node,
+                    new_vmid=new_vmid,
+                    name=machine_config['name'],
+                    pool=pool,
+                    full_clone=machine_config.get('full_clone', False)
+                )
 
             if clone_ok:
                 success(f"Успешно создана ВМ {emphasize(machine_config['name'])} (VMID: {emphasize(str(new_vmid))})")

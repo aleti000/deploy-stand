@@ -205,39 +205,89 @@ class ProxmoxManager:
                 else:
                     # Для linked clone между разными нодами используем автоматическое создание локального шаблона
                     print(f"🔄 Автоматически создаем локальный шаблон на ноде '{target_node}' для linked clone...")
-                    return self._create_local_template_for_linked_clone(template_node, template_vmid, target_node, new_vmid, name, pool)
+                    # Генерируем уникальный VMID для локального шаблона
+                    template_vmid_for_clone = self.get_next_vmid()
+                    while not self.check_vmid_unique(template_vmid_for_clone):
+                        template_vmid_for_clone += 1
+                    return self._create_local_template_for_linked_clone(template_node, template_vmid, target_node, template_vmid_for_clone, name, pool)
             else:
-                # Для клонирования на той же ноде
+                # Для клонирования на той же ноде - НЕ указываем storage для linked clone
                 if not full_clone:
-                    # Для linked clone на той же ноде используем local-lvm
-                    target_storages = self.get_storages(target_node)
-                    if 'local-lvm' in target_storages:
-                        clone_params['storage'] = 'local-lvm'
-                        print(f"🔄 Используется local-lvm для linked clone на ноде '{target_node}'")
-                    else:
-                        print(f"⚠️  local-lvm не найден на ноде '{target_node}', используем хранилище по умолчанию")
+                    print(f"🔄 Создаем linked clone на той же ноде '{target_node}' (используется хранилище шаблона)")
 
             if pool:
                 clone_params['pool'] = pool
 
-            task = self.proxmox.nodes(template_node).qemu(template_vmid).clone.post(**clone_params)
-            return self._wait_for_task(task, template_node)
+            try:
+                task = self.proxmox.nodes(template_node).qemu(template_vmid).clone.post(**clone_params)
+                return self._wait_for_task(task, template_node)
+            except Exception as e:
+                print(f"❌ Ошибка клонирования ВМ: {e}")
+                return False
         except Exception as e:
             print(f"Ошибка клонирования ВМ: {e}")
             return False
 
+    def clone_vm_from_local_template(self, template_node: str, template_vmid: int,
+                                     target_node: str, new_vmid: int, name: str, pool: str | None) -> bool:
+        """Клонировать ВМ из локального шаблона с размещением в local-lvm"""
+        try:
+            # Проверяем наличие local-lvm на целевой ноде
+            target_storages = self.get_storages(target_node)
+            if 'local-lvm' not in target_storages:
+                print(f"❌ local-lvm не найден на ноде '{target_node}'")
+                print("💡 Рекомендация: Настройте local-lvm storage на целевой ноде в Proxmox.")
+                return False
+
+            # Проверяем, что шаблон существует на целевой ноде
+            try:
+                vm_info = self.proxmox.nodes(target_node).qemu(template_vmid).config.get()
+                print(f"✅ Найден локальный шаблон VMID {template_vmid} на ноде '{target_node}'")
+            except Exception as e:
+                print(f"❌ Локальный шаблон VMID {template_vmid} не найден на ноде '{target_node}': {e}")
+                return False
+
+            # Для локальных шаблонов используем full clone без указания storage
+            # Proxmox сам выберет подходящее storage
+            clone_params = {
+                'newid': new_vmid,
+                'name': name,
+                'target': target_node,
+                'full': 1  # full clone
+            }
+
+            if pool:
+                clone_params['pool'] = pool
+
+            print(f"📋 Клонируем ВМ из локального шаблона VMID {template_vmid} на ноде '{template_node}'")
+            print(f"   Целевая нода: '{target_node}', VMID: {new_vmid}")
+            print(f"   Используемое хранилище: local-lvm")
+
+            task = self.proxmox.nodes(template_node).qemu(template_vmid).clone.post(**clone_params)
+            return self._wait_for_task(task, template_node)
+        except Exception as e:
+            print(f"Ошибка клонирования ВМ из локального шаблона: {e}")
+            return False
+
     def _create_local_template_for_linked_clone(self, template_node: str, template_vmid: int,
-                                               target_node: str, new_vmid: int, name: str, pool: str | None) -> bool:
+                                               target_node: str, new_vmid: int, name: str, pool: str | None, template_vmid_for_clone: int | None = None) -> bool:
         """Создать локальный шаблон на целевой ноде для linked clone"""
         try:
-            # Шаг 1: Найти общее хранилище для полного клонирования
+            # Шаг 1: Проверить наличие local-lvm на целевой ноде
+            target_storages = self.get_storages(target_node)
+            if 'local-lvm' not in target_storages:
+                print(f"❌ local-lvm не найден на ноде '{target_node}'")
+                print("💡 Рекомендация: Настройте local-lvm storage на целевой ноде в Proxmox.")
+                return False
+
+            # Шаг 2: Найти общее хранилище для полного клонирования
             common_storage = self.find_common_storage(template_node, target_node)
             if not common_storage:
                 print(f"❌ Не найдено общее хранилище между нодами {template_node} и {target_node}")
                 print("💡 Рекомендация: Настройте общее хранилище между нодами в Proxmox.")
                 return False
 
-            # Шаг 2: Создать полную копию на целевую ноду
+            # Шаг 3: Создать полную копию на целевую ноду в общее хранилище
             template_name = f"template-{template_vmid}-{target_node}"
             clone_params = {
                 'newid': new_vmid,
@@ -247,10 +297,12 @@ class ProxmoxManager:
                 'storage': common_storage
             }
 
-            if pool:
-                clone_params['pool'] = pool
+            # НЕ добавляем локальный шаблон в пул пользователя
+            # if pool:
+            #     clone_params['pool'] = pool
 
             print(f"📋 Создаем полную копию шаблона VMID {template_vmid} на ноде '{target_node}'...")
+            print(f"   Шаблон копируется с ноды '{template_node}' на ноду '{target_node}'")
             print(f"   Используемое хранилище: {common_storage}")
             try:
                 task = self.proxmox.nodes(template_node).qemu(template_vmid).clone.post(**clone_params)
@@ -271,7 +323,7 @@ class ProxmoxManager:
                 print("❌ Ошибка создания полной копии для локального шаблона")
                 return False
 
-            # Шаг 3: Преобразовать скопированную ВМ в шаблон
+            # Шаг 4: Преобразовать скопированную ВМ в шаблон
             print(f"🔄 Преобразовываем ВМ {new_vmid} в шаблон...")
             try:
                 self.proxmox.nodes(target_node).qemu(new_vmid).template.post()
@@ -280,8 +332,48 @@ class ProxmoxManager:
                 print(f"⚠️  ВМ создана, но не удалось преобразовать в шаблон: {e}")
                 print("💡 Можно преобразовать в шаблон вручную в веб-интерфейсе Proxmox")
 
-            # Шаг 4: Вернуть информацию о новом шаблоне
-            print(f"📋 Локальный шаблон готов: VMID {new_vmid} на ноде '{target_node}'")
+            # Шаг 5: Переместить шаблон в local-lvm storage на целевой ноде
+            print(f"🔄 Перемещаем шаблон в local-lvm storage на ноде '{target_node}'...")
+
+            # Проверяем текущую конфигурацию ВМ перед перемещением
+            try:
+                vm_config = self.proxmox.nodes(target_node).qemu(new_vmid).config.get()
+                print(f"   Текущая конфигурация ВМ: {vm_config}")
+
+                # Ищем диск scsi0 в конфигурации
+                disk_scsi0 = None
+                for key, value in vm_config.items():
+                    if key == 'scsi0' and isinstance(value, str):
+                        disk_scsi0 = value
+                        break
+
+                if disk_scsi0:
+                    print(f"   Найден диск scsi0: {disk_scsi0}")
+                    # Извлекаем имя storage из строки диска
+                    if 'storage=' in disk_scsi0:
+                        current_storage = disk_scsi0.split('storage=')[1].split(',')[0]
+                        print(f"   Текущее хранилище диска: {current_storage}")
+                    else:
+                        print(f"   Не удалось определить текущее хранилище диска")
+                else:
+                    print(f"   Диск scsi0 не найден в конфигурации")
+
+            except Exception as e:
+                print(f"   Не удалось получить конфигурацию ВМ: {e}")
+
+            try:
+                # Перемещаем диск в local-lvm
+                print(f"   Выполняем перемещение диска в local-lvm...")
+                self.proxmox.nodes(target_node).qemu(new_vmid).move_disk.post(disk='scsi0', storage='local-lvm')
+                print(f"✅ Шаблон перемещен в local-lvm storage")
+            except Exception as e:
+                print(f"⚠️  Не удалось переместить шаблон в local-lvm: {e}")
+                print("💡 Шаблон останется в текущем хранилище, но рекомендуется использовать local-lvm")
+                print(f"💡 Проверьте, что local-lvm storage доступен на ноде '{target_node}'")
+
+            # Шаг 6: Вернуть информацию о новом шаблоне
+            print(f"📋 Локальный шаблон готов: VMID {new_vmid} на ноде '{target_node}' в local-lvm storage")
+            print(f"💡 Шаблон скопирован с ноды '{template_node}' и размещен локально на ноде '{target_node}'")
             print(f"💡 Обновите конфигурацию развертывания: template_vmid={new_vmid}, template_node={target_node}")
 
             return True
