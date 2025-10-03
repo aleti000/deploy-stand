@@ -2,32 +2,62 @@ local_templates:
   100:PVE2:
     node: PVE2
     original_vmid: '100'
-    vmid: 104
+    vmid: 110
   100:PVE3:
     node: PVE3
     original_vmid: '100'
-    vmid: 106
+    vmid: 109
   101:PVE2:
     node: PVE2
     original_vmid: '101'
-    vmid: 105
+    vmid: 106
   101:PVE3:
     node: PVE3
     original_vmid: '101'
+    vmid: 105
+  103:PVE2:
+    node: PVE2
+    original_vmid: '103'
+    vmid: 108
+  103:PVE3:
+    node: PVE3
+    original_vmid: '103'
     vmid: 107
 machines:
 - device_type: linux
-  full_clone: false
-  name: gw
+  full_clone: true
+  name: CLI-home
+  networks:
+  - bridge: home
+  template_node: PVE1
+  template_vmid: 101
+- device_type: ecorouter
+  full_clone: true
+  name: EcoRouter
   networks:
   - bridge: vmbr0
-  - bridge: hq
+  - bridge: home
+  - bridge: office
+  template_node: PVE1
+  template_vmid: 103
+- device_type: linux
+  full_clone: true
+  name: srv1
+  networks:
+  - bridge: office
   template_node: PVE1
   template_vmid: 100
 - device_type: linux
-  full_clone: false
-  name: cli
+  full_clone: true
+  name: srv2
   networks:
-  - bridge: hq
+  - bridge: office
+  template_node: PVE1
+  template_vmid: 100
+- device_type: linux
+  full_clone: true
+  name: CLI-office
+  networks:
+  - bridge: office
   template_node: PVE1
   template_vmid: 101

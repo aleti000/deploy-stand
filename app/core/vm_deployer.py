@@ -1,16 +1,16 @@
-from typing import List, Any
+from typing import List, Dict, Any
 from app.core.proxmox_manager import ProxmoxManager
 from app.core.user_manager import UserManager
+from app.core.template_manager import TemplateManager
 import random
-import hashlib
-from app.utils.console import warn, success, title, emphasize
+from app.utils.logger import logger
 
 class VMDeployer:
     def __init__(self, proxmox_manager: ProxmoxManager):
         self.proxmox = proxmox_manager
         self.user_manager = UserManager(proxmox_manager)
+        self.template_manager = TemplateManager(proxmox_manager)
         self.alias_to_vmbr: dict[str, str] = {}
-        self.local_templates: dict[str, int] = {}  # Кэш для локальных шаблонов: ключ "оригинальный_vmid:target_node"
     
     def _allocate_vmbr_for_alias_and_pool(self, node: str, alias: str, pool: str) -> str:
         if alias == 'vmbr0':
@@ -24,64 +24,59 @@ class VMDeployer:
     
     def deploy_configuration(self, users: List[str], config: dict[str, Any],
                            node_selection: str = None, target_node: str = None) -> dict[str, str]:
-        # Загружаем существующие локальные шаблоны из конфигурации
-        print("🔍 Загружаем локальные шаблоны из конфигурации...")
-        self.load_local_templates_from_config()
-        print(f"📋 Загружено локальных шаблонов: {len(self.local_templates)}")
+        logger.info("🚀 Начинаем развертывание...")
 
+        # Подготовка шаблонов
+        templates_prepared = self._prepare_all_templates(config, node_selection, target_node)
+        if not templates_prepared:
+            logger.error("Ошибка подготовки шаблонов")
+            return {}
+
+        # Проверка конфликтов
+        existing_vms_check = self._check_existing_vms_in_pools(users, config)
+        if not existing_vms_check:
+            logger.error("Обнаружены конфликты. Развертывание отменено.")
+            return {}
+
+        # Создание пользователей и VMs
         results = {}
         nodes = self.proxmox.get_nodes()
         if not nodes:
-            print("Не удалось получить список нод!")
+            logger.error("Не удалось получить список нод!")
             return {}
+
         node_index = 0
         for user in users:
-            title(f"\n--- Развертывание для пользователя: {emphasize(user)} ---")
+            logger.debug(f"Создание пользователя: {user}")
             created_user, password = self.user_manager.create_user_and_pool(user)
             if not created_user:
-                print(f"Ошибка создания пользователя {user}")
+                logger.error(f"Ошибка создания пользователя {user}")
                 continue
             results[user] = password
+
             user_node = self._select_node_for_user(nodes, node_selection, target_node)
             if not user_node:
-                print(f"Не удалось выбрать ноду для пользователя {user}")
+                logger.error(f"Не удалось выбрать ноду для пользователя {user}")
                 continue
             if node_selection == 'balanced' and len(nodes) > 1:
                 user_node = nodes[node_index % len(nodes)]
                 node_index += 1
+
             pool_name = user.split('@')[0]
             self._create_user_vms(config, user_node, pool_name)
-        banner = "!" * 78
-        print(f"\n{banner}")
-        warn("ВНИМАНИЕ: После создания сетевых адаптеров необходимо вручную перезагрузить сеть на управляемых нодах.")
-        warn("Рекомендуется выполнить на каждой ноде: systemctl restart networking")
-        print(f"{banner}\n")
 
-        # Вывод результатов развертывания
+        # Вывод результатов
         if results:
-            print("🎯 РЕЗУЛЬТАТЫ РАЗВЕРТЫВАНИЯ:")
-            print("=" * 50)
+            print(f"\n✅ Развертывание завершено для {len(results)} пользователей")
+            print("Учетные данные:")
             for user, password in results.items():
-                print(f"👤 Пользователь: {emphasize(user)}")
-                print(f"🔑 Пароль: {emphasize(password)}")
-                print("-" * 30)
-            print("=" * 50)
-            print("⚠️  СОХРАНИТЕ ЭТУ ИНФОРМАЦИЮ! Пароли больше не будут отображаться.")
+                print(f"  {user} : {password}")
         else:
-            print("❌ Развертывание не удалось или не было создано пользователей.")
+            print("❌ Развертывание не удалось")
 
-        # Вывод информации о локальных шаблонах
-        if self.local_templates:
-            print("\n📋 СОЗДАННЫЕ ЛОКАЛЬНЫЕ ШАБЛОНЫ:")
-            print("=" * 60)
-            for template_key, template_vmid in self.local_templates.items():
-                original_vmid, target_node = template_key.split(':')
-                print(f"🔗 Шаблон VMID {template_vmid} на ноде '{target_node}' (из оригинала {original_vmid})")
-            print("=" * 60)
-            print("💡 Эти шаблоны будут автоматически использоваться для будущих развертываний linked clone")
-
-            # Сохраняем локальные шаблоны в конфигурацию для будущих развертываний
-            self.save_local_templates_to_config()
+        # Сохраняем локальные шаблоны
+        if self.template_manager.local_templates:
+            self.template_manager.save_local_templates_to_config()
 
         return results
     
@@ -96,102 +91,56 @@ class VMDeployer:
             return None
     
     def _create_user_vms(self, config: dict[str, Any], target_node: str, pool: str):
+        """Создание виртуальных машин для пользователя"""
         for machine_config in config.get('machines', []):
             device_type = machine_config.get('device_type', 'linux')
             new_vmid = self.proxmox.get_next_vmid()
             while not self.proxmox.check_vmid_unique(new_vmid):
                 new_vmid += 1
 
-            # Определяем ноду шаблона
+            # Определяем параметры шаблона
             template_node = machine_config.get('template_node', target_node)
             original_template_vmid = machine_config['template_vmid']
 
-            # Проверяем, есть ли локальный шаблон для linked clone
-            local_template_key = f"{original_template_vmid}:{target_node}"
-            if not machine_config.get('full_clone', False) and template_node != target_node:
-                if local_template_key in self.local_templates:
-                    # Используем существующий локальный шаблон
-                    actual_template_vmid = self.local_templates[local_template_key]
-                    actual_template_node = target_node
-                    print(f"📋 Используем локальный шаблон VMID {actual_template_vmid} на ноде '{actual_template_node}' для linked clone")
-                else:
-                    # Создаем локальный шаблон автоматически
-                    print(f"📋 Автоматическое создание локального шаблона для linked clone...")
-                    temp_vmid = self.proxmox.get_next_vmid()
-                    while not self.proxmox.check_vmid_unique(temp_vmid):
-                        temp_vmid += 1
+            # Получаем локальный шаблон для целевой ноды
+            actual_template_vmid = self.template_manager.get_template_for_node(original_template_vmid, target_node)
 
-                    template_create_ok = self.proxmox._create_local_template_for_linked_clone(
-                        template_node=template_node,
-                        template_vmid=original_template_vmid,
-                        target_node=target_node,
-                        new_vmid=temp_vmid,
-                        name=f"template-{original_template_vmid}-{target_node}",
-                        pool=pool
-                    )
-
-                    if template_create_ok:
-                        # Сохраняем информацию о локальном шаблоне
-                        self.local_templates[local_template_key] = temp_vmid
-                        actual_template_vmid = temp_vmid
-                        actual_template_node = target_node
-                        print(f"✅ Локальный шаблон создан и готов к использованию")
-
-                        # Немедленно сохраняем локальный шаблон в конфигурацию
-                        print(f"💾 Сохраняем локальный шаблон в конфигурацию...")
-                        self.save_local_templates_to_config()
-                    else:
-                        print(f"❌ Не удалось создать локальный шаблон для linked clone")
-                        print(f"🔄 Попытка использования полного клонирования как запасного варианта...")
-                        # Fallback to full clone
-                        actual_template_vmid = original_template_vmid
-                        actual_template_node = template_node
-                        # Устанавливаем флаг полного клонирования для этой ВМ
-                        machine_config['full_clone'] = True
-                        print(f"✅ Используем полное клонирование для ВМ {machine_config['name']}")
-            else:
-                # Используем оригинальную логику для full clone или когда ноды совпадают
+            if template_node != target_node and actual_template_vmid is None:
+                # Fallback: локальный шаблон должен был быть подготовлен заранее
+                logger.error(f"Локальный шаблон для VMID {original_template_vmid} на ноде '{target_node}' не найден")
+                logger.warning("Попытка использования оригинального шаблона как запасного варианта...")
                 actual_template_vmid = original_template_vmid
                 actual_template_node = template_node
-
-            print(f"📋 Клонирование шаблона VMID {actual_template_vmid} с ноды '{actual_template_node}' на ноду '{target_node}'")
-
-            # Используем обычный linked clone если шаблон на той же ноде
-            if actual_template_node == target_node:
-                # Клонирование на той же ноде - используем обычный linked clone
-                print(f"🔄 Создаем linked clone на той же ноде '{target_node}' из шаблона VMID {actual_template_vmid}")
-                clone_ok = self.proxmox.clone_vm(
-                    template_node=actual_template_node,
-                    template_vmid=actual_template_vmid,
-                    target_node=target_node,
-                    new_vmid=new_vmid,
-                    name=machine_config['name'],
-                    pool=pool,
-                    full_clone=False  # linked clone
-                )
+                machine_config['full_clone'] = True
+                logger.info(f"Используем оригинальный шаблон для ВМ {machine_config['name']}")
             else:
-                # Используем обычный метод клонирования для других случаев
-                clone_ok = self.proxmox.clone_vm(
-                    template_node=actual_template_node,
-                    template_vmid=actual_template_vmid,
-                    target_node=target_node,
-                    new_vmid=new_vmid,
-                    name=machine_config['name'],
-                    pool=pool,
-                    full_clone=machine_config.get('full_clone', False)
-                )
+                # Используем локальный шаблон или оригинальный на той же ноде
+                actual_template_vmid = actual_template_vmid if actual_template_vmid is not None else original_template_vmid
+                actual_template_node = target_node if actual_template_vmid != original_template_vmid else template_node
+
+            logger.debug(f"Создаем ВМ из шаблона VMID {actual_template_vmid} на ноде '{target_node}'")
+
+            # Создаем ВМ из шаблона
+            clone_ok = self.proxmox.clone_vm(
+                template_node=actual_template_node,
+                template_vmid=actual_template_vmid,
+                target_node=target_node,
+                new_vmid=new_vmid,
+                name=machine_config['name'],
+                pool=pool,
+                full_clone=machine_config.get('full_clone', False)
+            )
 
             if clone_ok:
-                success(f"Успешно создана ВМ {emphasize(machine_config['name'])} (VMID: {emphasize(str(new_vmid))})")
+                logger.success(f"Успешно создана ВМ {emphasize(machine_config['name'])} (VMID: {emphasize(str(new_vmid))})")
                 self._configure_network(new_vmid, target_node, machine_config['networks'], pool, device_type)
                 self.proxmox.ensure_vm_in_pool(pool, new_vmid)
             else:
-                print(f"❌ Ошибка создания ВМ {emphasize(machine_config['name'])}")
+                logger.error(f"Ошибка создания ВМ {machine_config['name']}")
                 if actual_template_node != target_node:
-                    print(f"💡 Рекомендация: Проверьте локальный шаблон VMID {actual_template_vmid} на ноде '{actual_template_node}'")
-                    print("   Или настройте общее хранилище между нодами в Proxmox.")
+                    logger.warning(f"Рекомендация: Проверьте локальный шаблон VMID {actual_template_vmid} на ноде '{actual_template_node}'")
                 else:
-                    print("💡 Проверьте, что шаблон доступен и не поврежден.")
+                    logger.warning("Проверьте, что шаблон доступен и не поврежден.")
     
     def _configure_network(self, vmid: int, node: str, networks: List[dict], pool: str, device_type: str = 'linux'):
         next_index_offset = 0
@@ -202,11 +151,11 @@ class VMDeployer:
                 mgmt_vmbr = 'vmbr0'
                 mac = self._generate_ecorouter_mac()
                 value = f'model=vmxnet3,bridge={mgmt_vmbr},macaddr={mac},link_down=1'
-                self.proxmox.proxmox.nodes(node).qemu(vmid).config.post(**{mgmt_net_id: value})
-                success(f"  Создан управляющий адаптер {emphasize(mgmt_net_id)} (ecorouter) на bridge {emphasize(mgmt_vmbr)}")
+                self.proxmox.proxmox.nodes(node).qemu(vmid).config.post(**{mgmt_net_id: value, f'{mgmt_net_id}_comments': 'Management Network: vmbr0'})
+                logger.success(f"  Создан управляющий адаптер {emphasize(mgmt_net_id)} (ecorouter) на bridge {emphasize(mgmt_vmbr)}")
                 mgmt_created = True
             except Exception as e:
-                print(f"  Ошибка создания управляющего адаптера net0: {e}")
+                print(f"  Ошибка создания управляющего адаптера net0 (сеть: vmbr0): {e}")
             next_index_offset = 1
         for idx, network in enumerate(networks):
             try:
@@ -220,120 +169,188 @@ class VMDeployer:
                     value = f'model=vmxnet3,bridge={vmbr},macaddr={mac}'
                 else:
                     value = f'model=virtio,bridge={vmbr},firewall=1'
-                config_params = { f'{net_id}': value }
+                config_params = { f'{net_id}': value, f'{net_id}_comments': f'Network: {alias}' }
                 self.proxmox.proxmox.nodes(node).qemu(vmid).config.post(**config_params)
-                success(f"  Настроен сетевой адаптер {emphasize(net_id)} на bridge {emphasize(vmbr)}")
+                logger.success(f"  Настроен сетевой адаптер {emphasize(net_id)} на bridge {emphasize(vmbr)} (сеть: {emphasize(alias)})")
             except Exception as e:
-                print(f"  Ошибка настройки сетевого адаптера {i}: {e}")
+                print(f"  Ошибка настройки сетевого адаптера {i} (сеть: {emphasize(alias)}): {e}")
         if device_type == 'ecorouter' and not mgmt_created:
             try:
                 mgmt_net_id = 'net0'
                 mgmt_vmbr = 'vmbr0'
                 mac = self._generate_ecorouter_mac()
                 value = f'model=vmxnet3,bridge={mgmt_vmbr},macaddr={mac},link_down=1'
-                self.proxmox.proxmox.nodes(node).qemu(vmid).config.post(**{mgmt_net_id: value})
-                success(f"  Повторно создан управляющий адаптер {emphasize(mgmt_net_id)} (ecorouter) на bridge {emphasize(mgmt_vmbr)}")
+                self.proxmox.proxmox.nodes(node).qemu(vmid).config.post(**{mgmt_net_id: value, f'{mgmt_net_id}_comments': 'Management Network: vmbr0'})
+                logger.success(f"  Повторно создан управляющий адаптер {emphasize(mgmt_net_id)} (ecorouter) на bridge {emphasize(mgmt_vmbr)}")
             except Exception as e:
-                print(f"  Не удалось создать управляющий адаптер net0 повторно: {e}")
+                print(f"  Не удалось создать управляющий адаптер net0 повторно (сеть: vmbr0): {e}")
     
     def _generate_ecorouter_mac(self) -> str:
-        import random
         tail = [random.randint(0x00, 0xFF) for _ in range(2)]
         return '1C:87:76:40:{:02X}:{:02X}'.format(tail[0], tail[1])
 
-    def save_local_templates_to_config(self, config_path: str = "data/deployment_config.yml") -> bool:
-        """Сохранить информацию о локальных шаблонах в конфигурационный файл"""
-        try:
-            import yaml
-            import os
 
-            # Загружаем существующий конфиг
-            if os.path.exists(config_path):
-                with open(config_path, 'r', encoding='utf-8') as f:
-                    config = yaml.safe_load(f) or {}
+
+
+
+    def _prepare_all_templates(self, config: dict[str, Any], node_selection: str = None, target_node: str = None) -> bool:
+        """Предварительная подготовка всех необходимых шаблонов перед созданием пользователей"""
+        try:
+            # Загружаем существующие локальные шаблоны из конфигурации
+            logger.debug("Загружаем существующие локальные шаблоны из конфигурации...")
+            self.template_manager.load_local_templates_from_config()
+
+            nodes = self.proxmox.get_nodes()
+            if not nodes:
+                logger.error("Не удалось получить список нод!")
+                return False
+
+            # Определяем целевые ноды для подготовки шаблонов
+            target_nodes = []
+            if node_selection == "specific" and target_node:
+                target_nodes = [target_node]
+            elif node_selection == "balanced":
+                target_nodes = nodes
             else:
-                config = {}
+                # Если не указан режим, используем первую ноду как целевую
+                target_nodes = [nodes[0]]
 
-            # Добавляем или обновляем информацию о локальных шаблонах
-            if 'local_templates' not in config:
-                config['local_templates'] = {}
+            logger.debug(f"Целевые ноды для подготовки шаблонов: {target_nodes}")
 
-            for template_key, template_vmid in self.local_templates.items():
-                original_vmid, target_node = template_key.split(':')
-                config['local_templates'][template_key] = {
-                    'vmid': template_vmid,
-                    'node': target_node,
-                    'original_vmid': original_vmid
-                }
+            # Собираем все уникальные комбинации шаблонов и целевых нод
+            required_templates = {}  # key: "original_vmid:target_node", value: template_info
 
-            # Сохраняем обновленный конфиг
-            with open(config_path, 'w', encoding='utf-8') as f:
-                yaml.dump(config, f, default_flow_style=False, allow_unicode=True, indent=2)
+            for machine_config in config.get('machines', []):
+                original_template_vmid = machine_config['template_vmid']
+                template_node = machine_config.get('template_node', target_nodes[0])
 
-            print(f"✅ Информация о локальных шаблонах сохранена в {config_path}")
-            return True
+                # Для каждой целевой ноды проверяем необходимость локального шаблона
+                for node in target_nodes:
+                    template_key = f"{original_template_vmid}:{node}"
 
-        except Exception as e:
-            print(f"❌ Ошибка сохранения локальных шаблонов в конфиг: {e}")
-            return False
+                    # Пропускаем если шаблон уже на той же ноде
+                    if template_node == node:
+                        continue
 
-    def load_local_templates_from_config(self, config_path: str = "data/deployment_config.yml") -> bool:
-        """Загрузить информацию о локальных шаблонах из конфигурационного файла"""
-        try:
-            import yaml
-            import os
+                    # Пропускаем если уже есть локальный шаблон
+                    if template_key in self.template_manager.local_templates:
+                        logger.debug(f"Локальный шаблон уже существует для {template_key}")
+                        continue
 
-            if not os.path.exists(config_path):
-                return False
+                    # Добавляем в список необходимых шаблонов
+                    required_templates[template_key] = {
+                        'original_vmid': original_template_vmid,
+                        'template_node': template_node,
+                        'target_node': node,
+                        'machine_config': machine_config
+                    }
 
-            with open(config_path, 'r', encoding='utf-8') as f:
-                config = yaml.safe_load(f) or {}
-
-            local_templates_info = config.get('local_templates', {})
-
-            # Загружаем информацию о локальных шаблонах
-            for template_key, template_info in local_templates_info.items():
-                if isinstance(template_info, dict):
-                    vmid = template_info.get('vmid')
-                    if vmid:
-                        self.local_templates[template_key] = vmid
-                else:
-                    # Обратная совместимость со старым форматом
-                    self.local_templates[template_key] = template_info
-
-            if self.local_templates:
-                print(f"✅ Загружено {len(self.local_templates)} локальных шаблонов из конфигурации")
-                for template_key, template_vmid in self.local_templates.items():
-                    original_vmid, target_node = template_key.split(':')
-                    print(f"   - Шаблон VMID {template_vmid} на ноде '{target_node}' (из оригинала {original_vmid})")
-
-            return True
-
-        except Exception as e:
-            print(f"❌ Ошибка загрузки локальных шаблонов из конфига: {e}")
-            return False
-
-    def cleanup_local_template(self, original_vmid: int, target_node: str) -> bool:
-        """Удалить локальный шаблон"""
-        try:
-            template_key = f"{original_vmid}:{target_node}"
-
-            if template_key not in self.local_templates:
-                print(f"❌ Локальный шаблон для VMID {original_vmid} на ноде '{target_node}' не найден")
-                return False
-
-            template_vmid = self.local_templates[template_key]
-
-            # Удаляем шаблон через Proxmox API
-            if self.proxmox.delete_vm(target_node, template_vmid):
-                # Удаляем из кэша
-                del self.local_templates[template_key]
-                print(f"✅ Локальный шаблон VMID {template_vmid} удален с ноды '{target_node}'")
+            if not required_templates:
+                logger.info("Все необходимые шаблоны уже подготовлены")
                 return True
-            else:
-                print(f"❌ Не удалось удалить локальный шаблон VMID {template_vmid}")
-                return False
+
+            logger.info(f"Требуется подготовить {len(required_templates)} локальных шаблонов...")
+
+            # Подготавливаем каждый требуемый шаблон
+            for template_key, template_info in required_templates.items():
+                logger.debug(f"Подготовка шаблона: {template_key}")
+                original_vmid = template_info['original_vmid']
+                template_node = template_info['template_node']
+                target_node = template_info['target_node']
+
+                # Генерируем уникальный VMID для локального шаблона
+                temp_vmid = self.proxmox.get_next_vmid()
+                while not self.proxmox.check_vmid_unique(temp_vmid):
+                    temp_vmid += 1
+
+                logger.debug(f"Создаем локальный шаблон VMID {temp_vmid} на ноде '{target_node}' из оригинала {original_vmid}...")
+
+                template_create_ok = self.proxmox._create_local_template_via_migration(
+                    template_node=template_node,
+                    template_vmid=original_vmid,
+                    target_node=target_node,
+                    new_vmid=temp_vmid,
+                    name=f"template-{original_vmid}-{target_node}",
+                    pool=None
+                )
+
+                if template_create_ok:
+                    # Сохраняем информацию о локальном шаблоне
+                    self.template_manager.local_templates[template_key] = temp_vmid
+                    logger.debug(f"Локальный шаблон подготовлен: VMID {temp_vmid} на ноде '{target_node}'")
+                else:
+                    logger.error(f"Не удалось подготовить локальный шаблон для {template_key}")
+                    return False
+
+            # Сохраняем все подготовленные шаблоны в конфигурацию
+            if self.template_manager.local_templates:
+                logger.debug(f"Сохраняем информацию о {len(self.template_manager.local_templates)} подготовленных шаблонах в конфигурацию...")
+                self.template_manager.save_local_templates_to_config()
+
+            logger.success("Фаза подготовки шаблонов завершена успешно")
+            return True
 
         except Exception as e:
-            print(f"❌ Ошибка удаления локального шаблона: {e}")
+            logger.error(f"Ошибка подготовки шаблонов: {e}")
+            return False
+
+    def _check_existing_vms_in_pools(self, users: List[str], config: dict[str, Any]) -> bool:
+        """Проверить наличие существующих машин в пулах пользователей"""
+        try:
+            logger.info("Проверка наличия машин в пулах пользователей...")
+
+            # Получаем список всех машин из конфигурации
+            required_machines = {}
+            for machine_config in config.get('machines', []):
+                machine_name = machine_config['name']
+                required_machines[machine_name] = []
+
+                # Для каждой машины собираем пользователей, которые ее получат
+                for user in users:
+                    pool_name = user.split('@')[0]
+                    required_machines[machine_name].append(pool_name)
+
+            # Проверяем каждый пул пользователя
+            for user in users:
+                pool_name = user.split('@')[0]
+
+                try:
+                    # Получаем информацию о пуле
+                    pool_info = self.proxmox.proxmox.pools(pool_name).get()
+                    members = pool_info.get('members', [])
+
+                    # Проверяем каждую VM в пуле
+                    for member in members:
+                        if member.get('type') == 'qemu':
+                            vmid = int(member['vmid'])
+                            node = member.get('node') or self.proxmox.get_vm_node(vmid)
+
+                            if node:
+                                try:
+                                    # Получаем конфигурацию VM для получения имени
+                                    vm_config = self.proxmox.proxmox.nodes(node).qemu(vmid).config.get()
+                                    vm_name = vm_config.get('name', f'VM-{vmid}')
+
+                                    # Проверяем, конфликтует ли имя с требуемыми машинами
+                                    for required_name, user_pools in required_machines.items():
+                                        if vm_name == required_name and pool_name in user_pools:
+                                            print(f"❌ Конфликт обнаружен!")
+                                            print(f"   Пул: {emphasize(pool_name)}")
+                                            print(f"   Существующая VM: {emphasize(vm_name)} (VMID: {vmid})")
+                                            print(f"   Требуемая VM: {emphasize(required_name)}")
+                                            print(f"💡 Удалите существующую VM или измените имя в конфигурации")
+                                            return False
+
+                                except Exception as e:
+                                    print(f"⚠️ Не удалось получить конфигурацию VM {vmid}: {e}")
+
+                except Exception:
+                    # Пул не существует - это нормально для новых пользователей
+                    continue
+
+            logger.info("Проверка завершена. Конфликтов не обнаружено.")
+            return True
+
+        except Exception as e:
+            logger.error(f"Ошибка проверки существующих машин: {e}")
             return False

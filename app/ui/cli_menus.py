@@ -2,7 +2,7 @@ from app.core.config import ConfigManager
 from app.core.proxmox_manager import ProxmoxManager
 from app.core.vm_deployer import VMDeployer
 from app.core.user_manager import UserManager
-from app.utils.console import info, success, warn, error, title, emphasize, kv
+from app.utils.logger import logger
 
 class MainMenu:
     def __init__(self):
@@ -13,7 +13,7 @@ class MainMenu:
         self._setup_proxmox_connection()
     
     def _setup_proxmox_connection(self):
-        info("Настройка подключения к Proxmox")
+        logger.info("Настройка подключения к Proxmox")
         host = input("Адрес Proxmox сервера (например: 192.168.1.100:8006): ")
         user = input("Имя пользователя (например: root@pam): ")
         use_token = input("Использовать токен для аутентификации? (y/n): ").lower() == 'y'
@@ -25,11 +25,11 @@ class MainMenu:
             password = input("Пароль: ")
             success_conn = self.proxmox_manager.connect(host, user, password=password)
         if success_conn:
-            success("Успешное подключение к Proxmox")
+            logger.success("Успешное подключение к Proxmox")
             self.vm_deployer = VMDeployer(self.proxmox_manager)
             self.user_manager = UserManager(self.proxmox_manager)
         else:
-            error("Не удалось подключиться к Proxmox")
+            logger.error("Не удалось подключиться к Proxmox")
     
     def show(self):
         while True:
@@ -54,31 +54,31 @@ class MainMenu:
             elif choice == "5":
                 self._delete_single_user_resources()
             elif choice == "0":
-                info("Выход из программы")
+                logger.info("Выход из программы")
                 break
             else:
-                warn("Неверный выбор!")
+                logger.warning("Неверный выбор!")
     
     def _manage_users_menu(self):
-        print("\n--- Управление пользователями ---")
+        logger.info("Управление пользователями")
         users_input = input("Введите список пользователей через запятую (формат: user1@pve,user2@pve): ")
         users = [user.strip() for user in users_input.split(',') if user.strip()]
         if users:
             if self.config_manager.save_users(users):
-                success("Список пользователей сохранён")
+                logger.success("Список пользователей сохранён")
             else:
-                error("Ошибка сохранения списка пользователей")
+                logger.error("Ошибка сохранения списка пользователей")
         else:
-            warn("Список пользователей пуст!")
+            logger.warning("Список пользователей пуст!")
     
     def _deploy_menu(self):
         if not self.vm_deployer:
-            error("Нет подключения к Proxmox!")
+            logger.error("Нет подключения к Proxmox!")
             return
         config = self.config_manager.load_deployment_config()
         users = self.config_manager.load_users()
         if not config or not users:
-            warn("Необходимо создать конфигурацию и указать пользователей!")
+            logger.warning("Необходимо создать конфигурацию и указать пользователей!")
             return
         nodes = self.proxmox_manager.get_nodes()
         node_selection = "auto"
@@ -94,24 +94,26 @@ class MainMenu:
                 target_node = input("Введите имя целевой ноды: ")
             elif choice == "2":
                 node_selection = "balanced"
-        info("Начало развертывания")
+        logger.info("Начало развертывания")
         results = self.vm_deployer.deploy_configuration(users, config, node_selection, target_node)
-        title("\n=== Результаты развертывания ===")
+        print("\n=== Результаты развертывания ===")
         for user, password in results.items():
-            clean_pwd = password.strip('{}') if isinstance(password, str) else str(password)
-            print(f"Пользователь: {emphasize(user)} | Пароль: {emphasize(clean_pwd)}")
+            print(f"Пользователь: {emphasize(user)} | Пароль: {emphasize(password)}")
     
     def _delete_all_users_resources(self):
         users = self.config_manager.load_users()
         if not users:
-            warn("Список пользователей пуст!")
+            logger.warning("Список пользователей пуст!")
             return
         confirm = input(f"Вы уверены, что хотите удалить ресурсы {len(users)} пользователей? (y/n): ")
         if confirm.lower() == 'y':
+            logger.info(f"Удаление ресурсов {len(users)} пользователей...")
             for user in users:
-                info(f"Удаление ресурсов пользователя: {user}")
                 self.user_manager.delete_user_resources(user)
-                success(f"Ресурсы пользователя {user} удалены")
+
+            # Автоматическая очистка неиспользуемых сетевых адаптеров
+            logger.info("Очистка неиспользуемых сетевых адаптеров...")
+            self._cleanup_unused_bridges()
     
     def _delete_single_user_resources(self):
         user = input("Введите имя пользователя для удаления: ")
@@ -119,5 +121,44 @@ class MainMenu:
             confirm = input(f"Вы уверены, что хотите удалить ресурсы пользователя {user}? (y/n): ")
             if confirm.lower() == 'y':
                 self.user_manager.delete_user_resources(user)
-                success(f"Ресурсы пользователя {user} удалены")
+                logger.success(f"Ресурсы пользователя {user} удалены")
 
+    def _cleanup_unused_bridges(self):
+        """Найти и удалить неиспользуемые сетевые адаптеры"""
+        if not self.proxmox_manager or not self.proxmox_manager.proxmox:
+            logger.error("Нет подключения к Proxmox!")
+            return
+
+        nodes = self.proxmox_manager.get_nodes()
+        if not nodes:
+            logger.warning("Не найдено доступных нод!")
+            return
+
+        total_bridges_found = 0
+        total_bridges_deleted = 0
+
+        for node in nodes:
+            # Получить список всех bridge на ноде
+            all_bridges = self.proxmox_manager.list_bridges(node)
+            unused_bridges = []
+
+            for bridge in all_bridges:
+                # Пропустить vmbr0 - системный bridge
+                if bridge == 'vmbr0':
+                    continue
+
+                # Проверить, используется ли bridge
+                if not self.proxmox_manager.bridge_in_use(node, bridge):
+                    unused_bridges.append(bridge)
+                    total_bridges_found += 1
+
+            # Удалить неиспользуемые bridge
+            for bridge in unused_bridges:
+                if self.proxmox_manager.delete_bridge(node, bridge):
+                    total_bridges_deleted += 1
+
+        # Вывод результатов
+        if total_bridges_deleted > 0:
+            logger.success(f"Очистка завершена: удалено {total_bridges_deleted} неиспользуемых bridge")
+        else:
+            logger.info("Неиспользуемых bridge не найдено")

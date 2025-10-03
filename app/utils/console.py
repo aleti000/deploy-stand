@@ -1,26 +1,28 @@
-from colorama import init, Fore, Style
+# Модуль устарел - используйте app.utils.logger вместо него
+# Оставлен для обратной совместимости
 
-init(autoreset=True)
+from app.utils.logger import logger, info as log_info, success as log_success, warning as log_warning, error as log_error
 
 def info(msg: str):
-    print(f"{Fore.CYAN}ℹ {msg}{Style.RESET_ALL}")
+    """Информационное сообщение"""
+    log_info(f"ℹ {msg}")
 
 def success(msg: str):
-    print(f"{Fore.GREEN}✅ {msg}{Style.RESET_ALL}")
+    """Сообщение об успехе"""
+    log_success(msg)
 
 def warn(msg: str):
-    print(f"{Fore.YELLOW}⚠ {msg}{Style.RESET_ALL}")
+    """Предупреждение"""
+    log_warning(f"⚠ {msg}")
 
 def error(msg: str):
-    print(f"{Fore.RED}✖ {msg}{Style.RESET_ALL}")
+    """Ошибка"""
+    log_error(f"✖ {msg}")
 
 def title(msg: str):
-    print(f"{Style.BRIGHT}{Fore.MAGENTA}{msg}{Style.RESET_ALL}")
+    """Заголовок"""
+    print(f"{logger.emphasize(msg)}")
 
 def emphasize(value: str) -> str:
-    return f"{Style.BRIGHT}{Fore.CYAN}{value}{Style.RESET_ALL}"
-
-def kv(label: str, value: str):
-    print(f"{Fore.BLUE}{label}:{Style.RESET_ALL} {Style.BRIGHT}{Fore.WHITE}{value}{Style.RESET_ALL}")
-
-
+    """Выделить текст"""
+    return logger.emphasize(value)

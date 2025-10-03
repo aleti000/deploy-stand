@@ -1,5 +1,6 @@
 import proxmoxer
-from typing import List, Any
+from typing import List
+from app.utils.logger import logger
 
 class ProxmoxManager:
     def __init__(self):
@@ -15,7 +16,7 @@ class ProxmoxManager:
             self.proxmox.version.get()
             return True
         except Exception as e:
-            print(f"Ошибка подключения к Proxmox: {e}")
+            logger.error(f"Ошибка подключения к Proxmox: {e}")
             return False
 
     def get_nodes(self) -> List[str]:
@@ -93,67 +94,35 @@ class ProxmoxManager:
             return []
 
     def find_common_storage(self, source_node: str, target_node: str) -> str:
-        """Найти общее хранилище между двумя нодами"""
+        """Найти общее хранилище между двумя нодами для полного клонирования"""
         try:
             source_storages = set(self.get_storages(source_node))
             target_storages = set(self.get_storages(target_node))
 
             print(f"🔍 Поиск общего хранилища между нодами {source_node} и {target_node}")
-            print(f"   Хранилища источника: {sorted(source_storages)}")
-            print(f"   Хранилища цели: {sorted(target_storages)}")
 
-            # Шаг 1: Найти пересечение хранилищ (общие хранилища)
+            # Найти пересечение хранилищ (общие хранилища)
             common = source_storages.intersection(target_storages)
-            print(f"   Общие хранилища: {sorted(common) if common else 'не найдены'}")
 
             if common:
                 # Предпочитаем shared хранилища для клонирования между нодами
                 for storage in common:
                     storage_info = self.get_storage_info(source_node, storage)
-                    if storage_info:
+                    if storage_info and storage_info.get('shared') == 1:
                         content_types = storage_info.get('content', '').split(',')
-                        is_shared = storage_info.get('shared') == 1
-                        storage_type = storage_info.get('type', '')
-
-                        print(f"   Проверка хранилища '{storage}': shared={is_shared}, type={storage_type}, content={content_types}")
-
-                        # Предпочитаем shared storage для межнодового клонирования
-                        if 'images' in content_types and is_shared:
+                        if 'images' in content_types:
                             print(f"   ✅ Выбрано shared хранилище '{storage}' для клонирования между нодами")
                             return storage
 
-                # Если нет shared хранилищ, используем любые общие хранилища кроме local-lvm для локальных шаблонов
+                # Fallback: используем любое общее хранилище кроме local-lvm
                 for storage in common:
-                    if storage == 'local-lvm':
-                        continue
-
-                    storage_info = self.get_storage_info(source_node, storage)
-                    if storage_info:
-                        content_types = storage_info.get('content', '').split(',')
-                        if 'images' in content_types:
-                            print(f"   ⚠️ Используем не-shared хранилище '{storage}' для клонирования между нодами")
-                            return storage
-
-            # Шаг 2: Если нет общих хранилищ, попробуем найти shared storage на любой ноде
-            all_shared_storages = set()
-            for storage in source_storages:
-                storage_info = self.get_storage_info(source_node, storage)
-                if storage_info and storage_info.get('shared') == 1:
-                    all_shared_storages.add(storage)
-
-            for storage in target_storages:
-                storage_info = self.get_storage_info(target_node, storage)
-                if storage_info and storage_info.get('shared') == 1:
-                    all_shared_storages.add(storage)
-
-            if all_shared_storages:
-                for storage in all_shared_storages:
-                    storage_info = self.get_storage_info(source_node, storage)
-                    if storage_info:
-                        content_types = storage_info.get('content', '').split(',')
-                        if 'images' in content_types:
-                            print(f"   ✅ Найдено shared хранилище '{storage}' доступное для клонирования")
-                            return storage
+                    if storage != 'local-lvm':
+                        storage_info = self.get_storage_info(source_node, storage)
+                        if storage_info:
+                            content_types = storage_info.get('content', '').split(',')
+                            if 'images' in content_types:
+                                print(f"   ⚠️ Используем не-shared хранилище '{storage}' для клонирования между нодами")
+                                return storage
 
             print(f"❌ Подходящее хранилище не найдено")
             return ""
@@ -188,198 +157,109 @@ class ProxmoxManager:
     def clone_vm(self, template_node: str, template_vmid: int,
                  target_node: str, new_vmid: int, name: str, pool: str | None, full_clone: bool = False) -> bool:
         try:
-            clone_params = {'newid': new_vmid, 'name': name, 'target': target_node, 'full': 1 if full_clone else 0}
-
-            # Если клонирование происходит между разными нодами
+            # Если клонирование между разными нодами - используем миграцию для подготовки локального шаблона
             if template_node != target_node:
-                if full_clone:
-                    # Для полного клонирования ищем общее хранилище
-                    common_storage = self.find_common_storage(template_node, target_node)
-                    if common_storage:
-                        clone_params['storage'] = common_storage
-                        print(f"🔄 Используется общее хранилище '{common_storage}' для полного клонирования между нодами {template_node} -> {target_node}")
-                    else:
-                        print(f"⚠️  Внимание: Не найдено общее хранилище между нодами {template_node} и {target_node}")
-                        print("   Полное клонирование может завершиться неудачей. Рекомендуется настроить общее хранилище.")
-                        return False
-                else:
-                    # Для linked clone между разными нодами используем автоматическое создание локального шаблона
-                    print(f"🔄 Автоматически создаем локальный шаблон на ноде '{target_node}' для linked clone...")
-                    # Генерируем уникальный VMID для локального шаблона
-                    template_vmid_for_clone = self.get_next_vmid()
-                    while not self.check_vmid_unique(template_vmid_for_clone):
-                        template_vmid_for_clone += 1
-                    return self._create_local_template_for_linked_clone(template_node, template_vmid, target_node, template_vmid_for_clone, name, pool)
+                print(f"🔄 Создаем {'полный' if full_clone else 'linked'} клон с использованием миграции между нодами {template_node} -> {target_node}")
+                # Генерируем уникальный VMID для промежуточного шаблона
+                template_vmid_for_migration = self.get_next_vmid()
+                while not self.check_vmid_unique(template_vmid_for_migration):
+                    template_vmid_for_migration += 1
+                return self._create_local_template_via_migration(template_node, template_vmid, target_node, template_vmid_for_migration, name, pool)
             else:
-                # Для клонирования на той же ноде - НЕ указываем storage для linked clone
-                if not full_clone:
-                    print(f"🔄 Создаем linked clone на той же ноде '{target_node}' (используется хранилище шаблона)")
+                # Для клонирования на той же ноде используем обычный метод
+                clone_params = {'newid': new_vmid, 'name': name, 'target': target_node, 'full': 1 if full_clone else 0}
+                if pool:
+                    clone_params['pool'] = pool
 
-            if pool:
-                clone_params['pool'] = pool
-
-            try:
-                task = self.proxmox.nodes(template_node).qemu(template_vmid).clone.post(**clone_params)
-                return self._wait_for_task(task, template_node)
-            except Exception as e:
-                print(f"❌ Ошибка клонирования ВМ: {e}")
-                return False
+                print(f"🔄 Создаем {'полный' if full_clone else 'linked'} клон на той же ноде '{target_node}'")
+                try:
+                    task = self.proxmox.nodes(template_node).qemu(template_vmid).clone.post(**clone_params)
+                    return self._wait_for_task(task, template_node)
+                except Exception as e:
+                    print(f"❌ Ошибка клонирования ВМ: {e}")
+                    return False
         except Exception as e:
             print(f"Ошибка клонирования ВМ: {e}")
             return False
 
-    def clone_vm_from_local_template(self, template_node: str, template_vmid: int,
-                                     target_node: str, new_vmid: int, name: str, pool: str | None) -> bool:
-        """Клонировать ВМ из локального шаблона с размещением в local-lvm"""
+
+
+    def _create_local_template_via_migration(self, template_node: str, template_vmid: int,
+                                           target_node: str, new_vmid: int, name: str, pool: str | None) -> bool:
+        """Создать локальный шаблон на целевой ноде с использованием миграции"""
         try:
-            # Проверяем наличие local-lvm на целевой ноде
-            target_storages = self.get_storages(target_node)
-            if 'local-lvm' not in target_storages:
-                print(f"❌ local-lvm не найден на ноде '{target_node}'")
-                print("💡 Рекомендация: Настройте local-lvm storage на целевой ноде в Proxmox.")
-                return False
-
-            # Проверяем, что шаблон существует на целевой ноде
-            try:
-                vm_info = self.proxmox.nodes(target_node).qemu(template_vmid).config.get()
-                print(f"✅ Найден локальный шаблон VMID {template_vmid} на ноде '{target_node}'")
-            except Exception as e:
-                print(f"❌ Локальный шаблон VMID {template_vmid} не найден на ноде '{target_node}': {e}")
-                return False
-
-            # Для локальных шаблонов используем full clone без указания storage
-            # Proxmox сам выберет подходящее storage
-            clone_params = {
-                'newid': new_vmid,
-                'name': name,
-                'target': target_node,
-                'full': 1  # full clone
-            }
-
-            if pool:
-                clone_params['pool'] = pool
-
-            print(f"📋 Клонируем ВМ из локального шаблона VMID {template_vmid} на ноде '{template_node}'")
-            print(f"   Целевая нода: '{target_node}', VMID: {new_vmid}")
-            print(f"   Используемое хранилище: local-lvm")
-
-            task = self.proxmox.nodes(template_node).qemu(template_vmid).clone.post(**clone_params)
-            return self._wait_for_task(task, template_node)
-        except Exception as e:
-            print(f"Ошибка клонирования ВМ из локального шаблона: {e}")
-            return False
-
-    def _create_local_template_for_linked_clone(self, template_node: str, template_vmid: int,
-                                               target_node: str, new_vmid: int, name: str, pool: str | None, template_vmid_for_clone: int | None = None) -> bool:
-        """Создать локальный шаблон на целевой ноде для linked clone"""
-        try:
-            # Шаг 1: Проверить наличие local-lvm на целевой ноде
-            target_storages = self.get_storages(target_node)
-            if 'local-lvm' not in target_storages:
-                print(f"❌ local-lvm не найден на ноде '{target_node}'")
-                print("💡 Рекомендация: Настройте local-lvm storage на целевой ноде в Proxmox.")
-                return False
-
-            # Шаг 2: Найти общее хранилище для полного клонирования
-            common_storage = self.find_common_storage(template_node, target_node)
-            if not common_storage:
-                print(f"❌ Не найдено общее хранилище между нодами {template_node} и {target_node}")
-                print("💡 Рекомендация: Настройте общее хранилище между нодами в Proxmox.")
-                return False
-
-            # Шаг 3: Создать полную копию на целевую ноду в общее хранилище
+            # Шаг 1: Создать полный клон на ноде где расположен шаблон
+            print(f"📋 Шаг 1: Создаем полный клон на ноде '{template_node}'...")
             template_name = f"template-{template_vmid}-{target_node}"
+
+            # Создаем полный клон на той же ноде сначала
             clone_params = {
                 'newid': new_vmid,
                 'name': template_name,
-                'target': target_node,
-                'full': 1,
-                'storage': common_storage
+                'target': template_node,  # Создаем на той же ноде сначала
+                'full': 1  # Полный клон
             }
 
-            # НЕ добавляем локальный шаблон в пул пользователя
-            # if pool:
-            #     clone_params['pool'] = pool
-
-            print(f"📋 Создаем полную копию шаблона VMID {template_vmid} на ноде '{target_node}'...")
-            print(f"   Шаблон копируется с ноды '{template_node}' на ноду '{target_node}'")
-            print(f"   Используемое хранилище: {common_storage}")
+            print(f"   Создаем полную копию VMID {template_vmid} на ноде '{template_node}'")
             try:
                 task = self.proxmox.nodes(template_node).qemu(template_vmid).clone.post(**clone_params)
+                if not self._wait_for_task(task, template_node):
+                    print("❌ Ошибка создания полной копии на исходной ноде")
+                    return False
+                print(f"✅ Полный клон создан на ноде '{template_node}' с VMID {new_vmid}")
             except Exception as e:
-                error_msg = str(e)
-                if "can't clone to non-shared storage" in error_msg:
-                    print(f"❌ Ошибка создания локального шаблона: {error_msg}")
-                    print(f"💡 Проблема: Хранилище '{common_storage}' не является общим между нодами")
-                    print(f"💡 Решения:")
-                    print(f"   1. Настройте общее хранилище (NFS, Ceph, etc.) между нодами {template_node} и {target_node}")
-                    print(f"   2. Используйте полное клонирование вместо linked clone")
-                    print(f"   3. Разместите шаблоны на одной ноде")
-                else:
-                    print(f"❌ Ошибка создания полной копии для локального шаблона: {error_msg}")
+                print(f"❌ Ошибка создания полного клона: {e}")
                 return False
 
-            if not self._wait_for_task(task, template_node):
-                print("❌ Ошибка создания полной копии для локального шаблона")
+            # Шаг 2: Преобразовать ВМ в шаблон
+            print(f"📋 Шаг 2: Преобразовываем ВМ {new_vmid} в шаблон...")
+            try:
+                self.proxmox.nodes(template_node).qemu(new_vmid).template.post()
+                print(f"✅ ВМ преобразована в шаблон на ноде '{template_node}'")
+            except Exception as e:
+                print(f"⚠️  Не удалось преобразовать ВМ в шаблон: {e}")
+                print("💡 Продолжаем с миграцией...")
+
+            # Шаг 3: Выполнить миграцию шаблона на нужную ноду
+            print(f"📋 Шаг 3: Выполняем миграцию шаблона на ноду '{target_node}'...")
+            try:
+                migration_params = {
+                    'target': target_node,
+                    'online': 1  # Онлайн миграция
+                }
+
+                print(f"   Миграция шаблона VMID {new_vmid} с '{template_node}' на '{target_node}'...")
+                task = self.proxmox.nodes(template_node).qemu(new_vmid).migrate.post(**migration_params)
+
+                if not self._wait_for_task(task, template_node):
+                    print("❌ Ошибка миграции шаблона")
+                    # Попробуем очистить неудачно мигрированный шаблон
+                    try:
+                        self.delete_vm(template_node, new_vmid)
+                    except Exception:
+                        pass
+                    return False
+
+                print(f"✅ Миграция успешно завершена на ноду '{target_node}'")
+
+            except Exception as e:
+                print(f"❌ Ошибка миграции: {e}")
+                # Попробуем очистить неудачно мигрированный шаблон
+                try:
+                    self.delete_vm(template_node, new_vmid)
+                except Exception:
+                    pass
                 return False
 
-            # Шаг 4: Преобразовать скопированную ВМ в шаблон
-            print(f"🔄 Преобразовываем ВМ {new_vmid} в шаблон...")
-            try:
-                self.proxmox.nodes(target_node).qemu(new_vmid).template.post()
-                print(f"✅ Шаблон успешно создан на ноде '{target_node}' с VMID {new_vmid}")
-            except Exception as e:
-                print(f"⚠️  ВМ создана, но не удалось преобразовать в шаблон: {e}")
-                print("💡 Можно преобразовать в шаблон вручную в веб-интерфейсе Proxmox")
-
-            # Шаг 5: Переместить шаблон в local-lvm storage на целевой ноде
-            print(f"🔄 Перемещаем шаблон в local-lvm storage на ноде '{target_node}'...")
-
-            # Проверяем текущую конфигурацию ВМ перед перемещением
-            try:
-                vm_config = self.proxmox.nodes(target_node).qemu(new_vmid).config.get()
-                print(f"   Текущая конфигурация ВМ: {vm_config}")
-
-                # Ищем диск scsi0 в конфигурации
-                disk_scsi0 = None
-                for key, value in vm_config.items():
-                    if key == 'scsi0' and isinstance(value, str):
-                        disk_scsi0 = value
-                        break
-
-                if disk_scsi0:
-                    print(f"   Найден диск scsi0: {disk_scsi0}")
-                    # Извлекаем имя storage из строки диска
-                    if 'storage=' in disk_scsi0:
-                        current_storage = disk_scsi0.split('storage=')[1].split(',')[0]
-                        print(f"   Текущее хранилище диска: {current_storage}")
-                    else:
-                        print(f"   Не удалось определить текущее хранилище диска")
-                else:
-                    print(f"   Диск scsi0 не найден в конфигурации")
-
-            except Exception as e:
-                print(f"   Не удалось получить конфигурацию ВМ: {e}")
-
-            try:
-                # Перемещаем диск в local-lvm
-                print(f"   Выполняем перемещение диска в local-lvm...")
-                self.proxmox.nodes(target_node).qemu(new_vmid).move_disk.post(disk='scsi0', storage='local-lvm')
-                print(f"✅ Шаблон перемещен в local-lvm storage")
-            except Exception as e:
-                print(f"⚠️  Не удалось переместить шаблон в local-lvm: {e}")
-                print("💡 Шаблон останется в текущем хранилище, но рекомендуется использовать local-lvm")
-                print(f"💡 Проверьте, что local-lvm storage доступен на ноде '{target_node}'")
-
-            # Шаг 6: Вернуть информацию о новом шаблоне
-            print(f"📋 Локальный шаблон готов: VMID {new_vmid} на ноде '{target_node}' в local-lvm storage")
-            print(f"💡 Шаблон скопирован с ноды '{template_node}' и размещен локально на ноде '{target_node}'")
-            print(f"💡 Обновите конфигурацию развертывания: template_vmid={new_vmid}, template_node={target_node}")
+            # Шаг 4: Вернуть информацию о новом шаблоне
+            print(f"📋 Локальный шаблон готов: VMID {new_vmid} на ноде '{target_node}'")
+            print(f"💡 Шаблон создан с помощью миграции с ноды '{template_node}' и размещен локально на ноде '{target_node}'")
+            print(f"💡 Последовательность: полный клон → шаблон → миграция")
 
             return True
 
         except Exception as e:
-            print(f"Ошибка создания локального шаблона: {e}")
+            print(f"Ошибка создания локального шаблона через миграцию: {e}")
             return False
 
     def _wait_for_task(self, task, node: str, timeout: int = 300) -> bool:
@@ -416,22 +296,115 @@ class ProxmoxManager:
 
     def delete_vm(self, node: str, vmid: int) -> bool:
         try:
+            print(f"   Останавливаем ВМ {vmid} на ноде {node}")
             try:
                 self.proxmox.nodes(node).qemu(vmid).status.stop.post()
-            except Exception:
-                pass
-            try:
-                self.proxmox.nodes(node).qemu(vmid).delete()
+                print(f"   ✅ ВМ {vmid} остановлена")
             except Exception as e:
                 if 'does not exist' in str(e).lower():
+                    print(f"   ⚠️ ВМ {vmid} уже не существует")
                     return True
-                raise
-            return True
+                print(f"   ⚠️ Не удалось остановить ВМ {vmid}: {e}")
+
+            import time
+            print(f"   Удаляем ВМ {vmid} на ноде {node}")
+            try:
+                self.proxmox.nodes(node).qemu(vmid).delete()
+                print(f"   ✅ ВМ {vmid} удалена")
+
+                # Ждем немного чтобы Proxmox обновил состояние
+                time.sleep(3)
+
+                # Проверяем, действительно ли ВМ удалена (множественные проверки)
+                for check_attempt in range(3):
+                    try:
+                        self.proxmox.nodes(node).qemu(vmid).status.get()
+                        print(f"   ⚠️ Попытка проверки {check_attempt + 1}: ВМ {vmid} все еще существует")
+                        time.sleep(1)
+                        if check_attempt == 2:  # Последняя попытка
+                            print(f"   ❌ ВМ {vmid} все еще существует после удаления!")
+                            return False
+                    except Exception:
+                        print(f"   ✅ Подтверждено: ВМ {vmid} успешно удалена (проверка {check_attempt + 1})")
+                        return True
+
+            except Exception as e:
+                if 'does not exist' in str(e).lower():
+                    print(f"   ✅ ВМ {vmid} уже удалена")
+                    return True
+                print(f"   ❌ Ошибка удаления ВМ {vmid}: {e}")
+                return False
+
         except Exception as e:
-            print(f"Ошибка удаления ВМ {vmid} на ноде {node}: {e}")
+            print(f"❌ Критическая ошибка удаления ВМ {vmid} на ноде {node}: {e}")
+            return False
+
+    def force_delete_vm(self, node: str, vmid: int) -> bool:
+        """Принудительное удаление ВМ с дополнительными проверками"""
+        try:
+            import time
+
+            print(f"🔨 Принудительное удаление ВМ {vmid} на ноде {node}")
+
+            # Попытка 1: Стандартное удаление
+            if self.delete_vm(node, vmid):
+                return True
+
+            print(f"   ⚠️ Стандартное удаление не удалось, пробуем альтернативные методы")
+
+            # Попытка 2: Удалить без остановки сначала
+            try:
+                print(f"   Попытка удаления ВМ {vmid} без предварительной остановки")
+                self.proxmox.nodes(node).qemu(vmid).delete()
+                time.sleep(3)
+
+                # Проверяем удаление
+                try:
+                    self.proxmox.nodes(node).qemu(vmid).status.get()
+                    print(f"   ❌ ВМ {vmid} все еще существует после альтернативного удаления")
+                except Exception:
+                    print(f"   ✅ ВМ {vmid} успешно удалена альтернативным методом")
+                    return True
+            except Exception as e:
+                print(f"   ❌ Альтернативное удаление также не удалось: {e}")
+
+            # Попытка 3: Проверить, существует ли ВМ вообще
+            try:
+                vm_info = self.proxmox.nodes(node).qemu(vmid).status.get()
+                print(f"   ℹ️ ВМ {vmid} существует, статус: {vm_info}")
+
+                # Попробовать уничтожить (destroy) перед удалением
+                try:
+                    print(f"   Попытка уничтожения ВМ {vmid}")
+                    self.proxmox.nodes(node).qemu(vmid).status.destroy.post()
+                    time.sleep(2)
+                    print(f"   ✅ ВМ {vmid} уничтожена")
+                except Exception:
+                    pass
+
+                # Теперь попробовать удалить
+                self.proxmox.nodes(node).qemu(vmid).delete()
+                time.sleep(3)
+
+                # Финальная проверка
+                try:
+                    self.proxmox.nodes(node).qemu(vmid).status.get()
+                    print(f"   ❌ ВМ {vmid} все еще существует после принудительного удаления")
+                    return False
+                except Exception:
+                    print(f"   ✅ ВМ {vmid} успешно удалена принудительным методом")
+                    return True
+
+            except Exception:
+                print(f"   ✅ ВМ {vmid} не существует - уже удалена")
+                return True
+
+        except Exception as e:
+            print(f"❌ Критическая ошибка принудительного удаления ВМ {vmid}: {e}")
             return False
 
     def bridge_in_use(self, node: str, bridge_name: str) -> bool:
+        """Проверить, используется ли bridge виртуальными машинами"""
         try:
             vms = self.proxmox.nodes(node).qemu.get()
             for vm in vms:
@@ -447,6 +420,7 @@ class ProxmoxManager:
             return True
 
     def delete_bridge(self, node: str, bridge_name: str) -> bool:
+        """Удалить неиспользуемый bridge"""
         try:
             if bridge_name == 'vmbr0':
                 return False
@@ -458,4 +432,68 @@ class ProxmoxManager:
             return True
         except Exception as e:
             print(f"Ошибка удаления bridge {bridge_name} на ноде {node}: {e}")
+            return False
+
+    def get_bridges_in_use(self, node: str) -> List[str]:
+        """Получить список всех используемых bridge на ноде"""
+        try:
+            vms = self.proxmox.nodes(node).qemu.get()
+            used_bridges = set()
+
+            for vm in vms:
+                vmid = int(vm.get('vmid', -1))
+                if vmid < 0:
+                    continue
+                cfg = self.proxmox.nodes(node).qemu(vmid).config.get()
+                for key, val in cfg.items():
+                    if isinstance(val, str) and key.startswith('net'):
+                        for part in val.split(','):
+                            if part.startswith('bridge='):
+                                bridge = part.split('=', 1)[1]
+                                used_bridges.add(bridge)
+
+            return list(used_bridges)
+        except Exception as e:
+            print(f"Ошибка получения используемых bridge на ноде {node}: {e}")
+            return []
+
+    def force_delete_pool(self, pool: str) -> bool:
+        """Принудительное удаление пула с повторными попытками"""
+        try:
+            import time
+
+            # Многократная попытка удаления пула
+            for attempt in range(3):
+                try:
+                    self.proxmox.pools(pool).delete()
+
+                    # Проверяем, действительно ли пул удален
+                    time.sleep(1)
+                    try:
+                        self.proxmox.pools(pool).get()
+                        if attempt == 2:  # Последняя попытка
+                            return False
+                    except Exception:
+                        return True
+
+                except Exception as e:
+                    if 'not empty' in str(e).lower():
+                        # Очистка членов пула перед следующей попыткой
+                        try:
+                            pool_info = self.proxmox.pools(pool).get()
+                            members = pool_info.get('members', [])
+                            for member in members:
+                                if member.get('type') == 'qemu':
+                                    vmid = int(member['vmid'])
+                                    self.proxmox.pools(pool).delete(vms=str(vmid))
+                        except Exception:
+                            pass
+                    elif attempt == 2:  # Последняя попытка
+                        return False
+
+                time.sleep(2)
+
+            return True
+        except Exception as e:
+            print(f"❌ Критическая ошибка принудительного удаления пула {pool}: {e}")
             return False

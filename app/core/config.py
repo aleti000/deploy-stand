@@ -1,6 +1,7 @@
 import yaml
 import os
 from typing import Dict, List, Any
+from app.utils.logger import logger
 
 CONFIG_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), 'data')
 os.makedirs(CONFIG_DIR, exist_ok=True)
@@ -27,8 +28,10 @@ class ConfigManager:
                 # Запрашивать ноду шаблона только если в кластере > 1 ноды
                 nodes = nodes or []
                 if len(nodes) > 1:
+                    # Сортируем ноды по алфавиту для удобства выбора
+                    sorted_nodes = sorted(nodes)
                     print("Доступные ноды для шаблона:")
-                    for idx, n in enumerate(nodes, start=1):
+                    for idx, n in enumerate(sorted_nodes, start=1):
                         print(f"{idx}. {n}")
                     while True:
                         sel = input("Выберите ноду (номер): ").strip()
@@ -63,16 +66,16 @@ class ConfigManager:
                 config['machines'].append(machine_config)
             with open(CONFIG_FILE, 'w') as f:
                 yaml.dump(config, f, default_flow_style=False, allow_unicode=True)
-            print(f"\nКонфигурация сохранена в файл: {CONFIG_FILE}")
+            logger.success(f"Конфигурация сохранена в файл: {CONFIG_FILE}")
             return config
         except ValueError as e:
-            print(f"Ошибка ввода: {e}")
+            logger.error(f"Ошибка ввода: {e}")
             return {}
 
     @staticmethod
     def load_deployment_config() -> Dict[str, Any]:
         if not os.path.exists(CONFIG_FILE):
-            print("Файл конфигурации не найден!")
+            logger.warning("Файл конфигурации не найден!")
             return {}
         with open(CONFIG_FILE, 'r') as f:
             return yaml.safe_load(f)
@@ -83,10 +86,10 @@ class ConfigManager:
             users_data = {'users': users}
             with open(USERS_FILE, 'w') as f:
                 yaml.dump(users_data, f, default_flow_style=False, allow_unicode=True)
-            print(f"Список пользователей сохранен в: {USERS_FILE}")
+            logger.success(f"Список пользователей сохранен в: {USERS_FILE}")
             return True
         except Exception as e:
-            print(f"Ошибка сохранения пользователей: {e}")
+            logger.error(f"Ошибка сохранения пользователей: {e}")
             return False
 
     @staticmethod
