@@ -69,14 +69,7 @@ class VMDeployer:
             pool_name = user.split('@')[0]
             self._create_user_vms(config, user_node, pool_name)
 
-        # Вывод результатов
-        if results:
-            print(f"\n✅ Развертывание завершено для {len(results)} пользователей")
-            print("Учетные данные:")
-            for user, password in results.items():
-                print(f"  {user} : {password}")
-        else:
-            print("❌ Развертывание не удалось")
+        # Вывод результатов убираем отсюда, оставляем только в CLI меню
 
         # Сохраняем локальные шаблоны
         if self.template_manager.local_templates:
