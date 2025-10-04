@@ -13,9 +13,12 @@ class VMDeployer:
         self.template_manager = TemplateManager(proxmox_manager)
         self.alias_to_vmbr: dict[str, str] = {}
     
-    def _allocate_vmbr_for_alias_and_pool(self, node: str, alias: str, pool: str) -> str:
+    def _allocate_vmbr_for_alias_and_pool(self, node: str, alias: str, pool: str, reserved: bool = False) -> str:
         if alias == 'vmbr0':
             return 'vmbr0'
+        # Если интерфейс зарезервированный, используем точное имя без генерации нового
+        if reserved:
+            return alias
         key = f"{node}:{pool}:{alias}"
         if key in self.alias_to_vmbr:
             return self.alias_to_vmbr[key]
@@ -163,7 +166,8 @@ class VMDeployer:
                 i = idx + next_index_offset
                 net_id = f"net{i}"
                 alias = network['bridge']
-                vmbr = self._allocate_vmbr_for_alias_and_pool(node, alias, pool)
+                reserved = network.get('reserved', False)
+                vmbr = self._allocate_vmbr_for_alias_and_pool(node, alias, pool, reserved)
                 self.proxmox.ensure_bridge(node, vmbr)
                 if device_type == 'ecorouter':
                     mac = self._generate_ecorouter_mac()

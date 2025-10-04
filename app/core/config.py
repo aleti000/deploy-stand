@@ -55,8 +55,15 @@ class ConfigManager:
                 num_networks = int(input(prompt))
                 machine_config['networks'] = []
                 for j in range(num_networks):
-                    bridge = input(f"Имя bridge для сетевой карты {j+1} (например vmbr0): ")
-                    machine_config['networks'].append({'bridge': bridge})
+                    bridge_input = input(f"Имя bridge для сетевой карты {j+1} (например vmbr0 или **vmbr100** для зарезервированного): ")
+                    # Проверяем, является ли bridge зарезервированным (заключен в **)
+                    if bridge_input.startswith('**') and bridge_input.endswith('**'):
+                        bridge = bridge_input[2:-2]  # Удаляем **
+                        reserved = True
+                    else:
+                        bridge = bridge_input
+                        reserved = False
+                    machine_config['networks'].append({'bridge': bridge, 'reserved': reserved})
 
                 # Выбор типа клонирования
                 print("Тип клонирования:")
@@ -150,8 +157,15 @@ class ConfigManager:
                 num_networks = int(input(prompt))
                 machine_config['networks'] = []
                 for j in range(num_networks):
-                    bridge = input(f"Имя bridge для сетевой карты {j+1} (например vmbr0): ")
-                    machine_config['networks'].append({'bridge': bridge})
+                    bridge_input = input(f"Имя bridge для сетевой карты {j+1} (например vmbr0 или **vmbr100** для зарезервированного): ")
+                    # Проверяем, является ли bridge зарезервированным (заключен в **)
+                    if bridge_input.startswith('**') and bridge_input.endswith('**'):
+                        bridge = bridge_input[2:-2]  # Удаляем **
+                        reserved = True
+                    else:
+                        bridge = bridge_input
+                        reserved = False
+                    machine_config['networks'].append({'bridge': bridge, 'reserved': reserved})
 
                 # Выбор типа клонирования
                 print("Тип клонирования:")
