@@ -1,0 +1,19 @@
+machines:
+- device_type: linux
+  full_clone: false
+  name: gw
+  networks:
+  - bridge: vmbr0
+    reserved: false
+  - bridge: hq
+    reserved: false
+  template_node: PVE1
+  template_vmid: 102
+- device_type: linux
+  full_clone: false
+  name: hq
+  networks:
+  - bridge: hq
+    reserved: false
+  template_node: PVE1
+  template_vmid: 100

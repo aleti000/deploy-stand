@@ -2,7 +2,6 @@ from typing import List, Dict, Any
 from app.core.proxmox_manager import ProxmoxManager
 from app.core.user_manager import UserManager
 from app.core.template_manager import TemplateManager
-import random
 from app.utils.logger import logger
 from app.utils.console import emphasize
 
@@ -28,63 +27,257 @@ class VMDeployer:
     
     def deploy_configuration(self, users: List[str], config: dict[str, Any],
                            node_selection: str = None, target_node: str = None) -> dict[str, str]:
-        logger.info("🚀 Начинаем развертывание...")
+        """
+        Развернуть конфигурацию виртуальных машин
+
+        Для balanced режима использует BalancedDeployer
+        """
+        if node_selection == 'balanced':
+            # Используем специализированный балансировщик для равномерного распределения
+            logger.info("📋 Используем BalancedDeployer для равномерного распределения...")
+            # Lazy import to avoid circular dependency
+            from app.core.balanced_deployer import BalancedDeployer
+            balanced_deployer = BalancedDeployer(self.proxmox, self)
+            return balanced_deployer.deploy_balanced(users, config)
+        else:
+            # Обычное развертывание на конкретную ноду или первую ноду
+            return self._deploy_to_target_node(users, config, node_selection, target_node)
+
+    def _deploy_to_target_node(self, users: List[str], config: dict[str, Any],
+                             node_selection: str = None, target_node: str = None) -> dict[str, str]:
+        """Развернуть на конкретную ноду (не balanced режим)"""
+        logger.info("🚀 Начинаем развертывание на целевую ноду...")
 
         # Подготовка шаблонов
-        templates_prepared = self._prepare_all_templates(config, node_selection, target_node)
+        templates_prepared = self._prepare_templates_for_target_node(config, node_selection, target_node)
         if not templates_prepared:
-            logger.error("Ошибка подготовки шаблонов")
+            logger.error("❌ Ошибка подготовки шаблонов")
             return {}
 
         # Проверка конфликтов
         existing_vms_check = self._check_existing_vms_in_pools(users, config)
         if not existing_vms_check:
-            logger.error("Обнаружены конфликты. Развертывание отменено.")
+            logger.error("❌ Обнаружены конфликты. Развертывание отменено.")
             return {}
 
         # Создание пользователей и VMs
         results = {}
         nodes = self.proxmox.get_nodes()
         if not nodes:
-            logger.error("Не удалось получить список нод!")
+            logger.error("❌ Не удалось получить список нод!")
             return {}
 
-        # Определяем распределение пользователей по нодам заранее
-        user_node_mapping = {}
-        if node_selection == 'balanced' and len(nodes) > 1:
-            # Распределяем пользователей по нодам равномерно
-            for i, user in enumerate(users):
-                user_node_mapping[user] = nodes[i % len(nodes)]
-        elif node_selection == 'specific' and target_node:
-            # Все пользователи на указанной ноде
-            for user in users:
-                user_node_mapping[user] = target_node
-        else:
-            # Все пользователи на первой ноде
-            for user in users:
-                user_node_mapping[user] = nodes[0]
+        # Определяем целевую ноду
+        target_node_actual = self._select_target_node(nodes, node_selection, target_node)
 
         for user in users:
-            logger.debug(f"Создание пользователя: {user}")
+            logger.debug(f"🔄 Создание пользователя: {user}")
             created_user, password = self.user_manager.create_user_and_pool(user)
             if not created_user:
-                logger.error(f"Ошибка создания пользователя {user}")
+                logger.error(f"❌ Ошибка создания пользователя {user}")
                 continue
             results[user] = password
 
-            user_node = user_node_mapping[user]
-            logger.debug(f"Пользователь {user} размещается на ноде '{user_node}'")
+            logger.debug(f"📍 Пользователь {user} размещается на ноде '{target_node_actual}'")
 
             pool_name = user.split('@')[0]
-            self._create_user_vms(config, user_node, pool_name)
-
-        # Вывод результатов убираем отсюда, оставляем только в CLI меню
+            self._create_user_vms(config, target_node_actual, pool_name)
 
         # Сохраняем локальные шаблоны
         if self.template_manager.local_templates:
             self.template_manager.save_local_templates_to_config()
 
+        logger.success(f"✅ Развертывание завершено для {len(results)} пользователей")
         return results
+
+    def _select_target_node(self, nodes: List[str], selection: str, target_node: str) -> str:
+        """Выбрать целевую ноду для развертывания"""
+        if len(nodes) == 1:
+            return nodes[0]
+        if selection == "specific" and target_node:
+            return target_node
+        else:
+            # Используем первую ноду по умолчанию
+            return nodes[0]
+
+    def _prepare_templates_for_target_node(self, config: dict[str, Any],
+                                         node_selection: str = None, target_node: str = None) -> bool:
+        """Подготовить шаблоны для конкретной целевой ноды"""
+        try:
+            # Загружаем существующие локальные шаблоны из конфигурации
+            logger.debug("📋 Загружаем существующие локальные шаблоны из конфигурации...")
+            self.template_manager.load_local_templates_from_config()
+
+            # Загружаем соответствие шаблонов между нодами
+            logger.debug("📋 Загружаем соответствие шаблонов между нодами...")
+            self.template_manager.load_template_mapping()
+
+            nodes = self.proxmox.get_nodes()
+            if not nodes:
+                logger.error("❌ Не удалось получить список нод!")
+                return False
+
+            # Определяем целевую ноду
+            target_node_actual = self._select_target_node(nodes, node_selection, target_node)
+
+            logger.debug(f"🎯 Целевая нода для подготовки шаблонов: {target_node_actual}")
+
+            # Собираем все уникальные комбинации шаблонов и целевой ноды
+            required_templates = {}  # key: "original_vmid:target_node", value: template_info
+
+            # Проходим по всем машинам в конфигурации
+            for machine_config in config.get('machines', []):
+                original_template_vmid = machine_config['template_vmid']
+                template_node = machine_config.get('template_node', nodes[0])
+
+                # Если шаблон не на той же ноде, где будет размещена машина
+                if template_node != target_node_actual:
+                    template_key = f"{original_template_vmid}:{target_node_actual}"
+
+                    # Проверяем, существует ли локальный шаблон физически на целевой ноде
+                    existing_template_vmid = self.template_manager.local_templates.get(template_key)
+                    if existing_template_vmid:
+                        # Проверяем, существует ли шаблон физически на целевой ноде
+                        if self._verify_template_exists(target_node_actual, existing_template_vmid):
+                            logger.debug(f"✅ Локальный шаблон VMID {existing_template_vmid} уже существует на ноде '{target_node_actual}'")
+                            continue
+                        else:
+                            logger.debug(f"🔄 Локальный шаблон VMID {existing_template_vmid} не найден физически на ноде '{target_node_actual}', пересоздаем")
+
+                    # Добавляем в список необходимых шаблонов
+                    required_templates[template_key] = {
+                        'original_vmid': original_template_vmid,
+                        'template_node': template_node,
+                        'target_node': target_node_actual,
+                        'machine_config': machine_config
+                    }
+
+            if not required_templates:
+                logger.info("✅ Все необходимые шаблоны уже подготовлены")
+                return True
+
+            logger.info(f"📋 Требуется подготовить {len(required_templates)} локальных шаблонов...")
+
+            # Подготавливаем каждый требуемый шаблон
+            for template_key, template_info in required_templates.items():
+                logger.debug(f"🔄 Подготовка шаблона: {template_key}")
+                original_vmid = template_info['original_vmid']
+                template_node = template_info['template_node']
+                target_node = template_info['target_node']
+
+                # Создаем локальный шаблон на целевой ноде
+                local_template_vmid = self._create_local_template_for_target_node(
+                    template_node, original_vmid, target_node
+                )
+
+                if local_template_vmid:
+                    # Сохраняем информацию о локальном шаблоне
+                    self.template_manager.local_templates[template_key] = local_template_vmid
+                    # Обновляем соответствие шаблонов между нодами
+                    self.template_manager.update_template_mapping(original_vmid, template_node, target_node, local_template_vmid)
+                    logger.success(f"✅ Локальный шаблон VMID {local_template_vmid} подготовлен на ноде '{target_node}'")
+                else:
+                    logger.error(f"❌ Не удалось подготовить локальный шаблон для {template_key}")
+                    return False
+
+            # Сохраняем все подготовленные шаблоны в конфигурацию
+            if self.template_manager.local_templates:
+                logger.debug(f"💾 Сохраняем информацию о {len(self.template_manager.local_templates)} подготовленных шаблонах в конфигурацию...")
+                self.template_manager.save_local_templates_to_config()
+
+                # Сохраняем соответствие шаблонов в отдельный файл
+                logger.debug("💾 Сохраняем соответствие шаблонов между нодами...")
+                self.template_manager.save_template_mapping()
+
+            logger.success("🎉 Фаза подготовки шаблонов завершена успешно")
+            return True
+
+        except Exception as e:
+            logger.error(f"❌ Ошибка подготовки шаблонов: {e}")
+            return False
+
+    def _create_local_template_for_target_node(self, template_node: str, original_template_vmid: int, target_node: str) -> int:
+        """Создать локальный шаблон для конкретной целевой ноды"""
+        try:
+            logger.info(f"🔄 Создаем локальный шаблон на ноде '{target_node}' из оригинала VMID {original_template_vmid}...")
+
+            # Шаг 1: Создать полный клон на ноде где расположен оригинальный шаблон
+            logger.info(f"📋 Шаг 1: Создаем полный клон на ноде '{template_node}'...")
+            temp_vmid = self.proxmox.get_next_vmid()
+            while not self.proxmox.check_vmid_unique(temp_vmid):
+                temp_vmid += 1
+
+            template_name = f"template-{original_template_vmid}-{target_node}"
+
+            # Создаем полный клон на той же ноде сначала
+            clone_params = {
+                'newid': temp_vmid,
+                'name': template_name,
+                'target': template_node,  # Создаем на той же ноде сначала
+                'full': 1  # Полный клон
+            }
+
+            logger.debug(f"   Создаем полную копию VMID {original_template_vmid} на ноде '{template_node}'")
+            try:
+                task = self.proxmox.proxmox.nodes(template_node).qemu(original_template_vmid).clone.post(**clone_params)
+                if not self._wait_for_task(task, template_node):
+                    logger.error("❌ Ошибка создания полной копии на исходной ноде")
+                    return 0
+                logger.success(f"✅ Полный клон создан на ноде '{template_node}' с VMID {temp_vmid}")
+            except Exception as e:
+                logger.error(f"❌ Ошибка создания полного клона: {e}")
+                return 0
+
+            # Шаг 2: Преобразовать ВМ в шаблон
+            logger.info(f"📋 Шаг 2: Преобразовываем ВМ {temp_vmid} в шаблон...")
+            try:
+                self.proxmox.proxmox.nodes(template_node).qemu(temp_vmid).template.post()
+                logger.success(f"✅ ВМ преобразована в шаблон на ноде '{template_node}'")
+            except Exception as e:
+                logger.warning(f"⚠️  Не удалось преобразовать ВМ в шаблон: {e}")
+                logger.info("💡 Продолжаем с миграцией...")
+
+            # Шаг 3: Выполнить миграцию шаблона на нужную ноду
+            if template_node != target_node:
+                logger.info(f"📋 Шаг 3: Выполняем миграцию шаблона на ноду '{target_node}'...")
+                try:
+                    migration_params = {
+                        'target': target_node,
+                        'online': 1  # Онлайн миграция
+                    }
+
+                    logger.debug(f"   Миграция шаблона VMID {temp_vmid} с '{template_node}' на '{target_node}'...")
+                    task = self.proxmox.proxmox.nodes(template_node).qemu(temp_vmid).migrate.post(**migration_params)
+
+                    if not self._wait_for_task(task, template_node):
+                        logger.error("❌ Ошибка миграции шаблона")
+                        # Попробуем очистить неудачно мигрированный шаблон
+                        try:
+                            self.proxmox.delete_vm(template_node, temp_vmid)
+                        except Exception:
+                            pass
+                        return 0
+
+                    logger.success(f"✅ Миграция успешно завершена на ноду '{target_node}'")
+
+                except Exception as e:
+                    logger.error(f"❌ Ошибка миграции: {e}")
+                    # Попробуем очистить неудачно мигрированный шаблон
+                    try:
+                        self.proxmox.delete_vm(template_node, temp_vmid)
+                    except Exception:
+                        pass
+                    return 0
+
+            # Шаг 4: Возвращаем VMID созданного локального шаблона
+            logger.success(f"📋 Локальный шаблон готов: VMID {temp_vmid} на ноде '{target_node}'")
+            logger.info(f"💡 Последовательность: полный клон → шаблон → миграция")
+
+            return temp_vmid
+
+        except Exception as e:
+            logger.error(f"❌ Ошибка создания локального шаблона для целевой ноды: {e}")
+            return 0
     
     def _select_node_for_user(self, nodes: List[str], selection: str, target_node: str) -> str:
         if len(nodes) == 1:

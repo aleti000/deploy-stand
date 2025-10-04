@@ -132,6 +132,38 @@ class ConfigManager:
             return False
 
     @staticmethod
+    def save_users_from_file(file_path: str) -> bool:
+        """Сохранить список пользователей из файла"""
+        try:
+            users = []
+            with open(file_path, 'r', encoding='utf-8') as f:
+                for line in f:
+                    # Удаляем пробелы и пустые строки
+                    user = line.strip()
+                    if user and not user.startswith('#'):  # Игнорируем комментарии
+                        # Добавляем домен @pve если не указан
+                        if '@' not in user:
+                            user = f"{user}@pve"
+                        users.append(user)
+
+            if users:
+                users_data = {'users': users}
+                with open(USERS_FILE, 'w') as f:
+                    yaml.dump(users_data, f, default_flow_style=False, allow_unicode=True)
+                logger.success(f"Список пользователей из файла {file_path} сохранен в: {USERS_FILE}")
+                logger.info(f"Загружено пользователей: {len(users)}")
+                return True
+            else:
+                logger.warning("Файл не содержит пользователей")
+                return False
+        except FileNotFoundError:
+            logger.error(f"Файл {file_path} не найден")
+            return False
+        except Exception as e:
+            logger.error(f"Ошибка загрузки пользователей из файла: {e}")
+            return False
+
+    @staticmethod
     def load_users() -> List[str]:
         if not os.path.exists(USERS_FILE):
             return []

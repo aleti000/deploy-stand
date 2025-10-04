@@ -141,15 +141,35 @@ class MainMenu:
     
     def _manage_users_menu(self):
         logger.info("Управление пользователями")
-        users_input = input("Введите список пользователей через запятую (формат: user1@pve,user2@pve): ")
-        users = [user.strip() for user in users_input.split(',') if user.strip()]
-        if users:
-            if self.config_manager.save_users(users):
-                logger.success("Список пользователей сохранён")
+        print("\n=== Управление пользователями ===")
+        print("1. Ввести список пользователей вручную")
+        print("2. Загрузить пользователей из файла")
+        print("0. Назад")
+
+        choice = input("Выберите действие: ")
+        if choice == "1":
+            users_input = input("Введите список пользователей через запятую (формат: user1@pve,user2@pve): ")
+            users = [user.strip() for user in users_input.split(',') if user.strip()]
+            if users:
+                if self.config_manager.save_users(users):
+                    logger.success("Список пользователей сохранён")
+                else:
+                    logger.error("Ошибка сохранения списка пользователей")
             else:
-                logger.error("Ошибка сохранения списка пользователей")
+                logger.warning("Список пользователей пуст!")
+        elif choice == "2":
+            file_path = input("Введите путь к файлу со списком пользователей: ").strip()
+            if file_path:
+                if self.config_manager.save_users_from_file(file_path):
+                    logger.success("Пользователи загружены из файла")
+                else:
+                    logger.error("Ошибка загрузки пользователей из файла")
+            else:
+                logger.warning("Путь к файлу не указан!")
+        elif choice == "0":
+            return
         else:
-            logger.warning("Список пользователей пуст!")
+            logger.warning("Неверный выбор!")
     
     def _manage_configs_menu(self):
         """Меню управления конфигурациями развертывания"""
