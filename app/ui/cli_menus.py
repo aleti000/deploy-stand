@@ -3,6 +3,7 @@ from app.core.proxmox_manager import ProxmoxManager
 from app.core.vm_deployer import VMDeployer
 from app.core.user_manager import UserManager
 from app.utils.logger import logger
+from app.utils.console import emphasize
 
 class MainMenu:
     def __init__(self):
@@ -35,10 +36,11 @@ class MainMenu:
         while True:
             print("\n=== Главное меню Proxmox Deployer ===")
             print("1. Создать конфигурацию для развертывания")
-            print("2. Указать список пользователей")
-            print("3. Развернуть конфигурацию")
-            print("4. Удалить машины по списку пользователей")
-            print("5. Удалить машины отдельного пользователя")
+            print("2. Управление конфигурациями")
+            print("3. Указать список пользователей")
+            print("4. Развернуть конфигурацию")
+            print("5. Удалить машины по списку пользователей")
+            print("6. Удалить машины отдельного пользователя")
             print("0. Выход")
             choice = input("Выберите действие: ")
             if choice == "1":
@@ -46,12 +48,14 @@ class MainMenu:
                 nodes = self.proxmox_manager.get_nodes()
                 self.config_manager.create_deployment_config(nodes)
             elif choice == "2":
-                self._manage_users_menu()
+                self._manage_configs_menu()
             elif choice == "3":
-                self._deploy_menu()
+                self._manage_users_menu()
             elif choice == "4":
-                self._delete_all_users_resources()
+                self._deploy_menu()
             elif choice == "5":
+                self._delete_all_users_resources()
+            elif choice == "6":
                 self._delete_single_user_resources()
             elif choice == "0":
                 logger.info("Выход из программы")
@@ -71,15 +75,86 @@ class MainMenu:
         else:
             logger.warning("Список пользователей пуст!")
     
+    def _manage_configs_menu(self):
+        """Меню управления конфигурациями развертывания"""
+        while True:
+            print("\n=== Управление конфигурациями ===")
+            print("1. Создать новую конфигурацию")
+            print("2. Показать список конфигураций")
+            print("3. Удалить конфигурацию")
+            print("0. Назад")
+
+            choice = input("Выберите действие: ")
+            if choice == "1":
+                config_name = input("Введите имя новой конфигурации: ").strip()
+                if config_name:
+                    nodes = self.proxmox_manager.get_nodes()
+                    self.config_manager.create_named_config(config_name, nodes)
+                else:
+                    logger.warning("Имя конфигурации не может быть пустым!")
+            elif choice == "2":
+                configs = self.config_manager.list_configs()
+                if configs:
+                    print("\nДоступные конфигурации:")
+                    for i, config_name in enumerate(configs, 1):
+                        print(f"{i}. {config_name}")
+                else:
+                    print("Нет доступных конфигураций")
+            elif choice == "3":
+                config_name = input("Введите имя конфигурации для удаления: ").strip()
+                if config_name:
+                    confirm = input(f"Удалить конфигурацию '{config_name}'? (y/n): ")
+                    if confirm.lower() == 'y':
+                        self.config_manager.delete_config(config_name)
+                else:
+                    logger.warning("Имя конфигурации не может быть пустым!")
+            elif choice == "0":
+                break
+            else:
+                logger.warning("Неверный выбор!")
+
     def _deploy_menu(self):
         if not self.vm_deployer:
             logger.error("Нет подключения к Proxmox!")
             return
-        config = self.config_manager.load_deployment_config()
-        users = self.config_manager.load_users()
-        if not config or not users:
-            logger.warning("Необходимо создать конфигурацию и указать пользователей!")
+
+        # Выбор конфигурации для развертывания
+        configs = self.config_manager.list_configs()
+        if not configs:
+            logger.warning("Нет доступных конфигураций! Создайте конфигурацию в меню 2.")
             return
+
+        print("\nДоступные конфигурации:")
+        for i, config_name in enumerate(configs, 1):
+            print(f"{i}. {config_name}")
+
+        while True:
+            try:
+                choice = input("Выберите конфигурацию (номер) или 'default' для использования deployment_config.yml: ")
+                if choice.lower() == 'default' or choice == '':
+                    config = self.config_manager.load_deployment_config()
+                    if not config:
+                        logger.warning("Файл deployment_config.yml не найден!")
+                        return
+                    break
+                else:
+                    config_index = int(choice) - 1
+                    if 0 <= config_index < len(configs):
+                        config = self.config_manager.load_config(configs[config_index])
+                        if not config:
+                            logger.warning(f"Не удалось загрузить конфигурацию '{configs[config_index]}'")
+                            return
+                        break
+                    else:
+                        print(f"Выберите номер от 1 до {len(configs)}")
+            except ValueError:
+                print("Введите номер или 'default'")
+
+        users = self.config_manager.load_users()
+        if not users:
+            logger.warning("Необходимо указать список пользователей!")
+            return
+
         nodes = self.proxmox_manager.get_nodes()
         node_selection = "auto"
         target_node = None
@@ -94,6 +169,7 @@ class MainMenu:
                 target_node = input("Введите имя целевой ноды: ")
             elif choice == "2":
                 node_selection = "balanced"
+
         logger.info("Начало развертывания")
         results = self.vm_deployer.deploy_configuration(users, config, node_selection, target_node)
         print("\n=== Результаты развертывания ===")
@@ -160,5 +236,8 @@ class MainMenu:
         # Вывод результатов
         if total_bridges_deleted > 0:
             logger.success(f"Очистка завершена: удалено {total_bridges_deleted} неиспользуемых bridge")
+            print("⚠️  НАПОМИНАНИЕ: После удаления сетевых bridge рекомендуется перезагрузить сеть на нодах:")
+            print(f"   Выполните команды на каждой ноде: systemctl restart networking")
+            print(f"   Или: systemctl restart systemd-networkd")
         else:
             logger.info("Неиспользуемых bridge не найдено")

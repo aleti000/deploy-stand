@@ -4,6 +4,7 @@ from app.core.user_manager import UserManager
 from app.core.template_manager import TemplateManager
 import random
 from app.utils.logger import logger
+from app.utils.console import emphasize
 
 class VMDeployer:
     def __init__(self, proxmox_manager: ProxmoxManager):
@@ -151,7 +152,7 @@ class VMDeployer:
                 mgmt_vmbr = 'vmbr0'
                 mac = self._generate_ecorouter_mac()
                 value = f'model=vmxnet3,bridge={mgmt_vmbr},macaddr={mac},link_down=1'
-                self.proxmox.proxmox.nodes(node).qemu(vmid).config.post(**{mgmt_net_id: value, f'{mgmt_net_id}_comments': 'Management Network: vmbr0'})
+                self.proxmox.proxmox.nodes(node).qemu(vmid).config.post(**{mgmt_net_id: value})
                 logger.success(f"  Создан управляющий адаптер {emphasize(mgmt_net_id)} (ecorouter) на bridge {emphasize(mgmt_vmbr)}")
                 mgmt_created = True
             except Exception as e:
@@ -169,7 +170,7 @@ class VMDeployer:
                     value = f'model=vmxnet3,bridge={vmbr},macaddr={mac}'
                 else:
                     value = f'model=virtio,bridge={vmbr},firewall=1'
-                config_params = { f'{net_id}': value, f'{net_id}_comments': f'Network: {alias}' }
+                config_params = { f'{net_id}': value }
                 self.proxmox.proxmox.nodes(node).qemu(vmid).config.post(**config_params)
                 logger.success(f"  Настроен сетевой адаптер {emphasize(net_id)} на bridge {emphasize(vmbr)} (сеть: {emphasize(alias)})")
             except Exception as e:
@@ -180,7 +181,7 @@ class VMDeployer:
                 mgmt_vmbr = 'vmbr0'
                 mac = self._generate_ecorouter_mac()
                 value = f'model=vmxnet3,bridge={mgmt_vmbr},macaddr={mac},link_down=1'
-                self.proxmox.proxmox.nodes(node).qemu(vmid).config.post(**{mgmt_net_id: value, f'{mgmt_net_id}_comments': 'Management Network: vmbr0'})
+                self.proxmox.proxmox.nodes(node).qemu(vmid).config.post(**{mgmt_net_id: value})
                 logger.success(f"  Повторно создан управляющий адаптер {emphasize(mgmt_net_id)} (ecorouter) на bridge {emphasize(mgmt_vmbr)}")
             except Exception as e:
                 print(f"  Не удалось создать управляющий адаптер net0 повторно (сеть: vmbr0): {e}")

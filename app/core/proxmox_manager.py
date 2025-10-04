@@ -296,21 +296,15 @@ class ProxmoxManager:
 
     def delete_vm(self, node: str, vmid: int) -> bool:
         try:
-            print(f"   Останавливаем ВМ {vmid} на ноде {node}")
             try:
                 self.proxmox.nodes(node).qemu(vmid).status.stop.post()
-                print(f"   ✅ ВМ {vmid} остановлена")
             except Exception as e:
                 if 'does not exist' in str(e).lower():
-                    print(f"   ⚠️ ВМ {vmid} уже не существует")
                     return True
-                print(f"   ⚠️ Не удалось остановить ВМ {vmid}: {e}")
 
             import time
-            print(f"   Удаляем ВМ {vmid} на ноде {node}")
             try:
                 self.proxmox.nodes(node).qemu(vmid).delete()
-                print(f"   ✅ ВМ {vmid} удалена")
 
                 # Ждем немного чтобы Proxmox обновил состояние
                 time.sleep(3)
@@ -319,24 +313,18 @@ class ProxmoxManager:
                 for check_attempt in range(3):
                     try:
                         self.proxmox.nodes(node).qemu(vmid).status.get()
-                        print(f"   ⚠️ Попытка проверки {check_attempt + 1}: ВМ {vmid} все еще существует")
                         time.sleep(1)
                         if check_attempt == 2:  # Последняя попытка
-                            print(f"   ❌ ВМ {vmid} все еще существует после удаления!")
                             return False
                     except Exception:
-                        print(f"   ✅ Подтверждено: ВМ {vmid} успешно удалена (проверка {check_attempt + 1})")
                         return True
 
             except Exception as e:
                 if 'does not exist' in str(e).lower():
-                    print(f"   ✅ ВМ {vmid} уже удалена")
                     return True
-                print(f"   ❌ Ошибка удаления ВМ {vmid}: {e}")
                 return False
 
         except Exception as e:
-            print(f"❌ Критическая ошибка удаления ВМ {vmid} на ноде {node}: {e}")
             return False
 
     def force_delete_vm(self, node: str, vmid: int) -> bool:
@@ -344,41 +332,38 @@ class ProxmoxManager:
         try:
             import time
 
-            print(f"🔨 Принудительное удаление ВМ {vmid} на ноде {node}")
+            print(f"🗑️ Удаляется ВМ {vmid}")
 
             # Попытка 1: Стандартное удаление
             if self.delete_vm(node, vmid):
+                print(f"✅ ВМ {vmid} успешно удалена")
                 return True
 
             print(f"   ⚠️ Стандартное удаление не удалось, пробуем альтернативные методы")
 
             # Попытка 2: Удалить без остановки сначала
             try:
-                print(f"   Попытка удаления ВМ {vmid} без предварительной остановки")
                 self.proxmox.nodes(node).qemu(vmid).delete()
                 time.sleep(3)
 
                 # Проверяем удаление
                 try:
                     self.proxmox.nodes(node).qemu(vmid).status.get()
-                    print(f"   ❌ ВМ {vmid} все еще существует после альтернативного удаления")
+                    print(f"❌ ВМ {vmid} все еще существует после альтернативного удаления")
                 except Exception:
-                    print(f"   ✅ ВМ {vmid} успешно удалена альтернативным методом")
+                    print(f"✅ ВМ {vmid} успешно удалена альтернативным методом")
                     return True
             except Exception as e:
-                print(f"   ❌ Альтернативное удаление также не удалось: {e}")
+                print(f"❌ Альтернативное удаление также не удалось: {e}")
 
             # Попытка 3: Проверить, существует ли ВМ вообще
             try:
                 vm_info = self.proxmox.nodes(node).qemu(vmid).status.get()
-                print(f"   ℹ️ ВМ {vmid} существует, статус: {vm_info}")
 
                 # Попробовать уничтожить (destroy) перед удалением
                 try:
-                    print(f"   Попытка уничтожения ВМ {vmid}")
                     self.proxmox.nodes(node).qemu(vmid).status.destroy.post()
                     time.sleep(2)
-                    print(f"   ✅ ВМ {vmid} уничтожена")
                 except Exception:
                     pass
 
@@ -389,14 +374,14 @@ class ProxmoxManager:
                 # Финальная проверка
                 try:
                     self.proxmox.nodes(node).qemu(vmid).status.get()
-                    print(f"   ❌ ВМ {vmid} все еще существует после принудительного удаления")
+                    print(f"❌ ВМ {vmid} все еще существует после принудительного удаления")
                     return False
                 except Exception:
-                    print(f"   ✅ ВМ {vmid} успешно удалена принудительным методом")
+                    print(f"✅ ВМ {vmid} успешно удалена принудительным методом")
                     return True
 
             except Exception:
-                print(f"   ✅ ВМ {vmid} не существует - уже удалена")
+                print(f"✅ ВМ {vmid} не существует - уже удалена")
                 return True
 
         except Exception as e:

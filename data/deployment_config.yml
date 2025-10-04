@@ -25,14 +25,14 @@ local_templates:
     vmid: 107
 machines:
 - device_type: linux
-  full_clone: true
+  full_clone: false
   name: CLI-home
   networks:
   - bridge: home
   template_node: PVE1
   template_vmid: 101
 - device_type: ecorouter
-  full_clone: true
+  full_clone: false
   name: EcoRouter
   networks:
   - bridge: vmbr0
@@ -41,21 +41,21 @@ machines:
   template_node: PVE1
   template_vmid: 103
 - device_type: linux
-  full_clone: true
+  full_clone: false
   name: srv1
   networks:
   - bridge: office
   template_node: PVE1
   template_vmid: 100
 - device_type: linux
-  full_clone: true
+  full_clone: false
   name: srv2
   networks:
   - bridge: office
   template_node: PVE1
   template_vmid: 100
 - device_type: linux
-  full_clone: true
+  full_clone: false
   name: CLI-office
   networks:
   - bridge: office

@@ -30,8 +30,8 @@ class UserManager:
             return False, ""
 
     def _generate_password(self) -> str:
-        """Генерирует случайный пароль для пользователя"""
-        random_part = ''.join(random.choices(string.ascii_letters + string.digits, k=12))
+        """Генерирует случайный пароль для пользователя (8 цифр)"""
+        random_part = ''.join(random.choices(string.digits, k=8))
         return random_part
 
     def delete_user_resources(self, username: str) -> bool:
@@ -57,20 +57,18 @@ class UserManager:
             # Удалить все VM пользователя
             for vmid, node in vm_nodes.items():
                 if not self.proxmox.force_delete_vm(node, vmid):
-                    logger.warning(f"Не удалось удалить VM {vmid}")
+                    logger.error(f"Критическая ошибка: не удалось удалить VM {vmid} на ноде {node}")
 
             # Удалить пул и пользователя
             try:
-                if self.proxmox.force_delete_pool(pool_name):
-                    logger.success(f"Пул {pool_name} удален")
+                self.proxmox.force_delete_pool(pool_name)
             except Exception as e:
-                logger.warning(f"Не удалось удалить пул {pool_name}: {e}")
+                logger.error(f"Ошибка удаления пула {pool_name}: {e}")
 
             try:
                 self.proxmox.proxmox.access.users(username).delete()
-                logger.success(f"Пользователь {username} удален")
             except Exception as e:
-                logger.warning(f"Не удалось удалить пользователя {username}: {e}")
+                logger.error(f"Ошибка удаления пользователя {username}: {e}")
 
             return True
         except Exception as e:
