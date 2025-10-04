@@ -442,6 +442,38 @@ class ProxmoxManager:
             print(f"Ошибка получения используемых bridge на ноде {node}: {e}")
             return []
 
+    def get_templates(self, node: str) -> List[dict]:
+        """Получить список шаблонов на ноде"""
+        try:
+            vms = self.proxmox.nodes(node).qemu.get()
+            templates = []
+
+            for vm in vms:
+                vmid = int(vm.get('vmid', -1))
+                if vmid < 0:
+                    continue
+
+                # Проверяем, является ли VM шаблоном
+                try:
+                    config = self.proxmox.nodes(node).qemu(vmid).config.get()
+                    template = config.get('template', 0)
+
+                    if template == 1:  # Это шаблон
+                        vm_name = config.get('name', f'VM-{vmid}')
+                        templates.append({
+                            'vmid': vmid,
+                            'name': vm_name,
+                            'node': node
+                        })
+                except Exception as e:
+                    # Игнорируем ошибки получения конфигурации для отдельных VM
+                    continue
+
+            return templates
+        except Exception as e:
+            print(f"Ошибка получения шаблонов на ноде {node}: {e}")
+            return []
+
     def force_delete_pool(self, pool: str) -> bool:
         """Принудительное удаление пула с повторными попытками"""
         try:

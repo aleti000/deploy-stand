@@ -1,2 +1,4 @@
 /__pycache__/
 **/__pycache__/
+data/connections_config.yml
+data/users_list.yml

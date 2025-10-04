@@ -2,19 +2,27 @@ local_templates:
   100:PVE2:
     node: PVE2
     original_vmid: '100'
-    vmid: 110
+    vmid: 107
   100:PVE3:
     node: PVE3
     original_vmid: '100'
-    vmid: 109
+    vmid: 106
   101:PVE2:
     node: PVE2
     original_vmid: '101'
-    vmid: 106
+    vmid: 105
   101:PVE3:
     node: PVE3
     original_vmid: '101'
-    vmid: 105
+    vmid: 104
+  102:PVE2:
+    node: PVE2
+    original_vmid: '102'
+    vmid: 109
+  102:PVE3:
+    node: PVE3
+    original_vmid: '102'
+    vmid: 108
   103:PVE2:
     node: PVE2
     original_vmid: '103'

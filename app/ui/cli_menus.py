@@ -15,9 +15,71 @@ class MainMenu:
     
     def _setup_proxmox_connection(self):
         logger.info("Настройка подключения к Proxmox")
+
+        # Получаем список сохраненных конфигураций подключения
+        connection_names = self.config_manager.list_connection_configs()
+
+        if connection_names:
+            print("Найденные конфигурации подключения:")
+            connections = self.config_manager.load_connections_config()
+
+            for i, name in enumerate(connection_names, 1):
+                config = connections[name]
+                print(f"{i}. {name} | {config.get('host')} | {config.get('user')}")
+
+            print(f"{len(connection_names) + 1}. Ввести новые данные подключения")
+            print("0. Выход")
+
+            while True:
+                try:
+                    choice = input("Выберите конфигурацию (номер): ").strip()
+                    if choice == "0":
+                        logger.info("Выход из программы")
+                        exit(0)
+
+                    choice_num = int(choice)
+                    if 1 <= choice_num <= len(connection_names):
+                        selected_name = connection_names[choice_num - 1]
+                        selected_config = connections[selected_name]
+
+                        # Используем выбранную конфигурацию
+                        host = selected_config['host']
+                        user = selected_config['user']
+                        use_token = selected_config['use_token']
+
+                        if use_token:
+                            token_name = selected_config.get('token_name')
+                            token_value = selected_config.get('token_value')
+                            success_conn = self.proxmox_manager.connect(host, user, token_name=token_name, token_value=token_value)
+                        else:
+                            password = selected_config.get('password')
+                            success_conn = self.proxmox_manager.connect(host, user, password=password)
+
+                        if success_conn:
+                            logger.success(f"Успешное подключение к Proxmox с использованием конфигурации '{selected_name}'")
+                            self.vm_deployer = VMDeployer(self.proxmox_manager)
+                            self.user_manager = UserManager(self.proxmox_manager)
+                            return
+                        else:
+                            logger.warning(f"Не удалось подключиться с использованием конфигурации '{selected_name}'")
+                            retry = input("Попробовать другую конфигурацию? (y/n): ").lower() == 'y'
+                            if not retry:
+                                break
+                    elif choice_num == len(connection_names) + 1:
+                        break
+                    else:
+                        print(f"Выберите номер от 1 до {len(connection_names) + 1}")
+                except ValueError:
+                    print("Введите корректный номер")
+        else:
+            print("Сохраненные конфигурации подключения не найдены")
+
+        # Ввод новых данных подключения
+        print("\nВведите данные для подключения:")
         host = input("Адрес Proxmox сервера (например: 192.168.1.100:8006): ")
         user = input("Имя пользователя (например: root@pam): ")
         use_token = input("Использовать токен для аутентификации? (y/n): ").lower() == 'y'
+
         if use_token:
             token_name = input("Имя токена: ")
             token_value = input("Значение токена: ")
@@ -25,10 +87,21 @@ class MainMenu:
         else:
             password = input("Пароль: ")
             success_conn = self.proxmox_manager.connect(host, user, password=password)
+
         if success_conn:
             logger.success("Успешное подключение к Proxmox")
             self.vm_deployer = VMDeployer(self.proxmox_manager)
             self.user_manager = UserManager(self.proxmox_manager)
+
+            # Предлагаем сохранить конфигурацию подключения
+            save_config = input("Сохранить конфигурацию подключения для будущих сессий? (y/n): ").lower() == 'y'
+            if save_config:
+                config_name = input("Введите имя для конфигурации подключения: ").strip()
+                if config_name:
+                    self.config_manager.save_connection_config(config_name, host, user, use_token,
+                                                             token_name if use_token else None,
+                                                             token_value if use_token else None,
+                                                             password if not use_token else None)
         else:
             logger.error("Не удалось подключиться к Proxmox")
     
@@ -41,12 +114,13 @@ class MainMenu:
             print("4. Развернуть конфигурацию")
             print("5. Удалить машины по списку пользователей")
             print("6. Удалить машины отдельного пользователя")
+            print("7. Управление конфигурацией подключения")
             print("0. Выход")
             choice = input("Выберите действие: ")
             if choice == "1":
                 # Передадим список нод, чтобы решать — запрашивать ли template_node
                 nodes = self.proxmox_manager.get_nodes()
-                self.config_manager.create_deployment_config(nodes)
+                self.config_manager.create_deployment_config(nodes, self.proxmox_manager)
             elif choice == "2":
                 self._manage_configs_menu()
             elif choice == "3":
@@ -57,6 +131,8 @@ class MainMenu:
                 self._delete_all_users_resources()
             elif choice == "6":
                 self._delete_single_user_resources()
+            elif choice == "7":
+                self._manage_connection_config_menu()
             elif choice == "0":
                 logger.info("Выход из программы")
                 break
@@ -89,7 +165,7 @@ class MainMenu:
                 config_name = input("Введите имя новой конфигурации: ").strip()
                 if config_name:
                     nodes = self.proxmox_manager.get_nodes()
-                    self.config_manager.create_named_config(config_name, nodes)
+                    self.config_manager.create_named_config(config_name, nodes, self.proxmox_manager)
                 else:
                     logger.warning("Имя конфигурации не может быть пустым!")
             elif choice == "2":
@@ -241,3 +317,140 @@ class MainMenu:
             print(f"   Или: systemctl restart systemd-networkd")
         else:
             logger.info("Неиспользуемых bridge не найдено")
+
+    def _manage_connection_config_menu(self):
+        """Меню управления конфигурациями подключения"""
+        while True:
+            print("\n=== Управление конфигурациями подключения ===")
+
+            # Получаем список сохраненных конфигураций подключения
+            connection_names = self.config_manager.list_connection_configs()
+
+            if connection_names:
+                print("Сохраненные конфигурации подключения:")
+                connections = self.config_manager.load_connections_config()
+
+                for i, name in enumerate(connection_names, 1):
+                    config = connections[name]
+                    print(f"{i}. {name} | {config.get('host')} | {config.get('user')}")
+
+                print(f"\nДоступные действия:")
+                print(f"{len(connection_names) + 1}. Создать новую конфигурацию подключения")
+                print(f"{len(connection_names) + 2}. Показать детали конфигурации")
+                print(f"{len(connection_names) + 3}. Удалить конфигурацию подключения")
+                print("0. Назад")
+            else:
+                print("Сохраненные конфигурации подключения не найдены")
+                print("\nДоступные действия:")
+                print("1. Создать новую конфигурацию подключения")
+                print("0. Назад")
+
+            choice = input("Выберите действие: ")
+
+            if connection_names:
+                max_choice = len(connection_names) + 3
+                if choice == "0":
+                    break
+                elif choice == str(len(connection_names) + 1):
+                    # Создать новую конфигурацию
+                    self._create_new_connection_config()
+                elif choice == str(len(connection_names) + 2):
+                    # Показать детали конфигурации
+                    while True:
+                        print("\nВыберите конфигурацию для просмотра деталей:")
+                        for i, name in enumerate(connection_names, 1):
+                            print(f"{i}. {name}")
+                        print("0. Назад")
+
+                        detail_choice = input("Выберите конфигурацию: ")
+                        if detail_choice == "0":
+                            break
+
+                        try:
+                            detail_num = int(detail_choice)
+                            if 1 <= detail_num <= len(connection_names):
+                                selected_name = connection_names[detail_num - 1]
+                                selected_config = connections[selected_name]
+
+                                print(f"\nДетали конфигурации '{selected_name}':")
+                                print(f"  Сервер: {selected_config.get('host')}")
+                                print(f"  Пользователь: {selected_config.get('user')}")
+                                if selected_config.get('use_token'):
+                                    print(f"  Тип аутентификации: Токен")
+                                    print(f"  Имя токена: {selected_config.get('token_name')}")
+                                    print(f"  Значение токена: {'*' * len(selected_config.get('token_value', ''))}")
+                                else:
+                                    print(f"  Тип аутентификации: Пароль")
+                                    print(f"  Пароль: {'*' * len(selected_config.get('password', ''))}")
+                                input("\nНажмите Enter для продолжения...")
+                                break
+                            else:
+                                print(f"Выберите номер от 1 до {len(connection_names)}")
+                        except ValueError:
+                            print("Введите корректный номер")
+                elif choice == str(len(connection_names) + 3):
+                    # Удалить конфигурацию
+                    while True:
+                        print("\nВыберите конфигурацию для удаления:")
+                        for i, name in enumerate(connection_names, 1):
+                            print(f"{i}. {name}")
+                        print("0. Назад")
+
+                        delete_choice = input("Выберите конфигурацию: ")
+                        if delete_choice == "0":
+                            break
+
+                        try:
+                            delete_num = int(delete_choice)
+                            if 1 <= delete_num <= len(connection_names):
+                                selected_name = connection_names[delete_num - 1]
+                                confirm = input(f"Вы уверены, что хотите удалить конфигурацию '{selected_name}'? (y/n): ")
+                                if confirm.lower() == 'y':
+                                    self.config_manager.delete_connection_config(selected_name)
+                                break
+                            else:
+                                print(f"Выберите номер от 1 до {len(connection_names)}")
+                        except ValueError:
+                            print("Введите корректный номер")
+                else:
+                    logger.warning("Неверный выбор!")
+            else:
+                # Если нет сохраненных конфигураций
+                if choice == "0":
+                    break
+                elif choice == "1":
+                    self._create_new_connection_config()
+                else:
+                    logger.warning("Неверный выбор!")
+
+    def _create_new_connection_config(self):
+        """Создать новую конфигурацию подключения"""
+        print("\nВведите данные для подключения:")
+        host = input("Адрес Proxmox сервера (например: 192.168.1.100:8006): ")
+        user = input("Имя пользователя (например: root@pam): ")
+        use_token = input("Использовать токен для аутентификации? (y/n): ").lower() == 'y'
+
+        if use_token:
+            token_name = input("Имя токена: ")
+            token_value = input("Значение токена: ")
+            success_conn = self.proxmox_manager.connect(host, user, token_name=token_name, token_value=token_value)
+        else:
+            password = input("Пароль: ")
+            success_conn = self.proxmox_manager.connect(host, user, password=password)
+
+        if success_conn:
+            logger.success("Успешное подключение к Proxmox")
+            self.vm_deployer = VMDeployer(self.proxmox_manager)
+            self.user_manager = UserManager(self.proxmox_manager)
+
+            # Предлагаем сохранить конфигурацию подключения
+            save_config = input("Сохранить конфигурацию подключения? (y/n): ").lower() == 'y'
+            if save_config:
+                config_name = input("Введите имя для конфигурации подключения: ").strip()
+                if config_name:
+                    self.config_manager.save_connection_config(config_name, host, user, use_token,
+                                                             token_name if use_token else None,
+                                                             token_value if use_token else None,
+                                                             password if not use_token else None)
+        else:
+            logger.error("Не удалось подключиться к Proxmox")
