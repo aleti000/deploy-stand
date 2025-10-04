@@ -10,69 +10,34 @@ TEMPLATE_MAPPING_FILE = os.path.join(os.path.dirname(os.path.dirname(os.path.dir
 class TemplateManager:
     """Управление шаблонами виртуальных машин"""
 
+    _instance = None
+
     def __init__(self, proxmox_manager: ProxmoxManager):
         self.proxmox = proxmox_manager
         self.local_templates: Dict[str, int] = {}  # Кэш для локальных шаблонов
         self.template_mapping: Dict[str, Dict[str, int]] = {}  # Соответствие шаблонов между нодами
 
+    @classmethod
+    def get_instance(cls, proxmox_manager: ProxmoxManager = None):
+        """Получить singleton экземпляр TemplateManager"""
+        if cls._instance is None:
+            if proxmox_manager is None:
+                raise ValueError("Для создания первого экземпляра TemplateManager нужен proxmox_manager")
+            cls._instance = cls(proxmox_manager)
+        elif proxmox_manager is not None:
+            # Обновляем proxmox_manager в существующем экземпляре если передан новый
+            cls._instance.proxmox = proxmox_manager
+        return cls._instance
+
     def save_local_templates_to_config(self, config_path: str = "data/deployment_config.yml") -> bool:
-        """Сохранить информацию о локальных шаблонах в конфигурационный файл"""
-        try:
-            # Загружаем существующий конфиг
-            if os.path.exists(config_path):
-                with open(config_path, 'r', encoding='utf-8') as f:
-                    config = yaml.safe_load(f) or {}
-            else:
-                config = {}
-
-            # Добавляем или обновляем информацию о локальных шаблонах
-            if 'local_templates' not in config:
-                config['local_templates'] = {}
-
-            for template_key, template_vmid in self.local_templates.items():
-                original_vmid, target_node = template_key.split(':')
-                config['local_templates'][template_key] = {
-                    'vmid': template_vmid,
-                    'node': target_node,
-                    'original_vmid': original_vmid
-                }
-
-            # Сохраняем обновленный конфиг
-            with open(config_path, 'w', encoding='utf-8') as f:
-                yaml.dump(config, f, default_flow_style=False, allow_unicode=True, indent=2)
-
-            return True
-
-        except Exception as e:
-            logger.error(f"Ошибка сохранения локальных шаблонов в конфиг: {e}")
-            return False
+        """Сохранить информацию о локальных шаблонах в конфигурационный файл (устаревшая функция)"""
+        logger.warning("save_local_templates_to_config устарела. Используйте save_template_mapping()")
+        return self.save_template_mapping()
 
     def load_local_templates_from_config(self, config_path: str = "data/deployment_config.yml") -> bool:
-        """Загрузить информацию о локальных шаблонах из конфигурационного файла"""
-        try:
-            if not os.path.exists(config_path):
-                return False
-
-            with open(config_path, 'r', encoding='utf-8') as f:
-                config = yaml.safe_load(f) or {}
-
-            local_templates_info = config.get('local_templates', {})
-
-            # Загружаем информацию о локальных шаблонах
-            for template_key, template_info in local_templates_info.items():
-                if isinstance(template_info, dict):
-                    vmid = template_info.get('vmid')
-                    if vmid:
-                        self.local_templates[template_key] = vmid
-                else:
-                    # Обратная совместимость со старым форматом
-                    self.local_templates[template_key] = template_info
-
-            return True
-
-        except Exception as e:
-            logger.error(f"Ошибка загрузки локальных шаблонов из конфига: {e}")
-            return False
+        """Загрузить информацию о локальных шаблонах из конфигурационного файла (устаревшая функция)"""
+        logger.warning("load_local_templates_from_config устарела. Используйте load_template_mapping()")
+        return self.load_template_mapping()
 
     def prepare_template_for_node(self, original_vmid: int, template_node: str,
                                  target_node: str) -> int | None:
@@ -111,9 +76,9 @@ class TemplateManager:
             return None
 
     def get_template_for_node(self, original_vmid: int, target_node: str) -> int | None:
-        """Получить VMID локального шаблона для целевой ноды"""
-        template_key = f"{original_vmid}:{target_node}"
-        return self.local_templates.get(template_key)
+        """Получить VMID локального шаблона для целевой ноды из template_mapping"""
+        # Ищем только в template_mapping (local_templates устарел)
+        return self.get_mapped_template(original_vmid, target_node)
 
     def cleanup_template(self, original_vmid: int, target_node: str) -> bool:
         """Удалить локальный шаблон"""
@@ -150,7 +115,7 @@ class TemplateManager:
                 }
             }
 
-            # Группируем шаблоны по оригинальному VMID
+            # Группируем шаблоны по оригинальному VMID для template_mapping
             for template_key, local_vmid in self.local_templates.items():
                 original_vmid, target_node = template_key.split(':')
                 original_vmid = int(original_vmid)
@@ -178,26 +143,52 @@ class TemplateManager:
             if not os.path.exists(TEMPLATE_MAPPING_FILE):
                 logger.debug("Файл соответствия шаблонов не найден, создаем пустое соответствие")
                 self.template_mapping = {}
+                self.local_templates = {}  # Инициализируем пустой словарь локальных шаблонов
                 return False
 
             with open(TEMPLATE_MAPPING_FILE, 'r', encoding='utf-8') as f:
                 data = yaml.safe_load(f) or {}
 
             self.template_mapping = data.get('template_mapping', {})
+
+            # ВАЖНО: Больше не загружаем local_templates из файла
+            # Теперь local_templates используется только как кэш в памяти
+            # Все данные хранятся в template_mapping
+
             logger.success(f"Загружено соответствие шаблонов для {len(self.template_mapping)} оригинальных шаблонов")
             return True
 
         except Exception as e:
             logger.error(f"Ошибка загрузки соответствия шаблонов: {e}")
             self.template_mapping = {}
+            self.local_templates = {}
+            return False
+
+    def verify_template_exists(self, node: str, vmid: int) -> bool:
+        """Проверить физическое существование шаблона на ноде"""
+        try:
+            # Попытаемся получить конфигурацию VM
+            vm_config = self.proxmox.proxmox.nodes(node).qemu(vmid).config.get()
+            if vm_config:
+                # Проверяем, что это действительно шаблон
+                template = vm_config.get('template', 0)
+                return template == 1
+            return False
+        except Exception as e:
+            # Если не можем получить конфигурацию, значит VM не существует
             return False
 
     def get_mapped_template(self, original_vmid: int, target_node: str) -> int | None:
         """Получить VMID локального шаблона для целевой ноды из соответствия"""
-        if str(original_vmid) not in self.template_mapping:
+        # Пробуем найти как строку
+        if str(original_vmid) in self.template_mapping:
+            node_mapping = self.template_mapping[str(original_vmid)]
+        # Пробуем найти как число
+        elif original_vmid in self.template_mapping:
+            node_mapping = self.template_mapping[original_vmid]
+        else:
             return None
 
-        node_mapping = self.template_mapping[str(original_vmid)]
         return node_mapping.get(target_node)
 
     def update_template_mapping(self, original_vmid: int, template_node: str, target_node: str, local_vmid: int) -> None:
@@ -208,6 +199,7 @@ class TemplateManager:
             self.template_mapping[original_vmid_str] = {}
 
         self.template_mapping[original_vmid_str][target_node] = local_vmid
+
         logger.debug(f"Обновлено соответствие: {original_vmid} -> {target_node}: {local_vmid}")
 
     def remove_template_mapping(self, original_vmid: int, target_node: str) -> None:
@@ -222,3 +214,8 @@ class TemplateManager:
                 # Если для оригинального шаблона не осталось соответствий, удаляем весь блок
                 if not self.template_mapping[original_vmid_str]:
                     del self.template_mapping[original_vmid_str]
+
+        # Также удаляем из кэша local_templates
+        template_key = f"{original_vmid}:{target_node}"
+        if template_key in self.local_templates:
+            del self.local_templates[template_key]

@@ -279,12 +279,21 @@ class MainMenu:
             return
         confirm = input(f"Вы уверены, что хотите удалить ресурсы {len(users)} пользователей? (y/n): ")
         if confirm.lower() == 'y':
-            logger.info(f"Удаление ресурсов {len(users)} пользователей...")
-            for user in users:
-                self.user_manager.delete_user_resources(user)
+            logger.info(f"🗑️ Удаление ресурсов {len(users)} пользователей...")
+            deleted_count = 0
+            failed_users = []
+
+            # Используем оптимизированную пакетную обработку
+            results = self.user_manager.delete_user_resources_batch(users)
+
+            # Вывод итогов только если есть успешные удаления или ошибки
+            if results['successful'] or results['failed']:
+                logger.info(f"📊 Итоги удаления: успешно {len(results['successful'])}, ошибок {len(results['failed'])}, пропущено {len(results['skipped'])}")
+                if results['failed']:
+                    logger.warning(f"⚠️ Не удалось удалить ресурсы следующих пользователей: {', '.join(results['failed'])}")
 
             # Автоматическая очистка неиспользуемых сетевых адаптеров
-            logger.info("Очистка неиспользуемых сетевых адаптеров...")
+            logger.info("🧹 Очистка неиспользуемых сетевых адаптеров...")
             self._cleanup_unused_bridges()
     
     def _delete_single_user_resources(self):

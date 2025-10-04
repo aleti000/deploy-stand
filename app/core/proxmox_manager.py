@@ -82,7 +82,7 @@ class ProxmoxManager:
             return int(self.proxmox.cluster.nextid.get())
         except Exception as e:
             print(f"Ошибка получения следующего VMID: {e}")
-            return 1000
+            return 2000  # Увеличиваем стартовый VMID для избежания конфликтов с локальными шаблонами
 
     def get_storages(self, node: str) -> List[str]:
         """Получить список доступных хранилищ на ноде"""
