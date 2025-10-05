@@ -1,0 +1,1918 @@
+# РУКОВОДСТВО ПО РЕАЛИЗАЦИИ DEPLOY-STAND
+
+## ОБЗОР ПРОЕКТА
+
+Deploy-Stand - это модульная система для автоматизированного развертывания виртуальных машин в кластере Proxmox VE. Система построена на принципах модульной архитектуры, где каждый функциональный блок реализован как независимый модуль.
+
+## МОДУЛЬНАЯ АРХИТЕКТУРА
+
+### Принципы модульного дизайна:
+- **Изоляция функционала**: Каждый модуль отвечает за конкретную область
+- **Четкие интерфейсы**: Модули взаимодействуют через строго определенные контракты
+- **Независимость**: Изменения в одном модуле не влияют на другие
+- **Подключаемость**: Модули можно легко добавлять/удалять/заменять
+- **Тестируемость**: Каждый модуль можно тестировать независимо
+
+### Структура модулей:
+```
+deploy-stand/
+├── core/                          # Ядро системы
+│   ├── interfaces/                # Интерфейсы модулей
+│   │   ├── __init__.py
+│   │   ├── deployment_interface.py    # Интерфейс развертывания
+│   │   ├── balancing_interface.py    # Интерфейс балансировки
+│   │   ├── template_interface.py     # Интерфейс управления шаблонами
+│   │   └── network_interface.py      # Интерфейс сети
+│   ├── modules/                   # Реализации модулей
+│   │   ├── __init__.py
+│   │   ├── deployment/            # Модуль развертывания
+│   │   │   ├── __init__.py
+│   │   │   ├── basic_deployer.py     # Базовый развертыватель
+│   │   │   └── advanced_deployer.py  # Продвинутый развертыватель
+│   │   ├── balancing/             # Модуль балансировки
+│   │   │   ├── __init__.py
+│   │   │   ├── simple_balancer.py    # Простая балансировка
+│   │   │   └── smart_balancer.py     # Интеллектуальная балансировка
+│   │   ├── templates/             # Модуль шаблонов
+│   │   │   ├── __init__.py
+│   │   │   ├── local_templates.py    # Локальные шаблоны
+│   │   │   └── migration_templates.py # Миграция шаблонов
+│   │   └── network/               # Модуль сети
+│   │       ├── __init__.py
+│   │       ├── bridge_manager.py     # Управление bridge'ами
+│   │       └── interface_config.py   # Конфигурация интерфейсов
+│   ├── config/                    # Модуль конфигурации
+│   │   ├── __init__.py
+│   │   ├── config_manager.py
+│   │   └── validators.py
+│   ├── users/                     # Модуль пользователей
+│   │   ├── __init__.py
+│   │   ├── user_manager.py
+│   │   └── pool_manager.py
+│   └── proxmox/                   # Модуль Proxmox API
+│       ├── __init__.py
+│       ├── proxmox_client.py
+│       └── api_wrapper.py
+├── ui/                            # Пользовательский интерфейс
+│   ├── __init__.py
+│   ├── cli/                       # CLI модули
+│   │   ├── __init__.py
+│   │   ├── menu_system.py
+│   │   └── command_handler.py
+│   └── validators/                # Валидаторы ввода
+│       ├── __init__.py
+│       └── input_validators.py
+├── utils/                         # Утилиты
+│   ├── __init__.py
+│   ├── logging/                   # Модуль логирования
+│   │   ├── __init__.py
+│   │   └── logger.py
+│   ├── caching/                   # Модуль кеширования
+│   │   ├── __init__.py
+│   │   └── cache_manager.py
+│   └── monitoring/                # Модуль мониторинга
+│       ├── __init__.py
+│       └── metrics.py
+└── main.py                        # Точка входа
+```
+
+## ИНТЕРФЕЙСЫ МОДУЛЕЙ
+
+### 1. Интерфейс развертывания (core/interfaces/deployment_interface.py)
+```python
+from abc import ABC, abstractmethod
+from typing import Dict, List, Any
+
+class DeploymentInterface(ABC):
+    """Интерфейс для модулей развертывания виртуальных машин"""
+
+    @abstractmethod
+    def deploy_configuration(self, users: List[str], config: Dict[str, Any],
+                           node_selection: str = "auto", target_node: str = None) -> Dict[str, str]:
+        """
+        Развернуть конфигурацию виртуальных машин
+
+        Args:
+            users: Список пользователей для развертывания
+            config: Конфигурация развертывания
+            node_selection: Стратегия выбора ноды ("auto", "specific", "balanced")
+            target_node: Целевая нода (если node_selection="specific")
+
+        Returns:
+            Словарь {пользователь: пароль}
+        """
+        pass
+
+    @abstractmethod
+    def validate_config(self, config: Dict[str, Any]) -> bool:
+        """Валидация конфигурации развертывания"""
+        pass
+
+    @abstractmethod
+    def get_deployment_status(self, deployment_id: str) -> Dict[str, Any]:
+        """Получить статус развертывания"""
+        pass
+```
+
+### 2. Интерфейс балансировки (core/interfaces/balancing_interface.py)
+```python
+from abc import ABC, abstractmethod
+from typing import Dict, List
+
+class BalancingInterface(ABC):
+    """Интерфейс для модулей балансировки нагрузки"""
+
+    @abstractmethod
+    def distribute_deployment(self, users: List[str], nodes: List[str],
+                            config: Dict = None) -> Dict[str, List[str]]:
+        """
+        Распределить пользователей по нодам
+
+        Args:
+            users: Список пользователей
+            nodes: Доступные ноды
+            config: Конфигурация развертывания
+
+        Returns:
+            Словарь {нода: [пользователи]}
+        """
+        pass
+
+    @abstractmethod
+    def analyze_node_load(self, nodes: List[str]) -> Dict[str, Dict[str, float]]:
+        """
+        Проанализировать загруженность нод
+
+        Returns:
+            Метрики загруженности для каждой ноды
+        """
+        pass
+
+    @abstractmethod
+    def optimize_distribution(self, current_distribution: Dict[str, List[str]],
+                            config: Dict = None) -> Dict[str, List[str]]:
+        """Оптимизировать существующее распределение"""
+        pass
+```
+
+### 3. Интерфейс управления шаблонами (core/interfaces/template_interface.py)
+```python
+from abc import ABC, abstractmethod
+from typing import Dict, List
+
+class TemplateInterface(ABC):
+    """Интерфейс для модулей управления шаблонами"""
+
+    @abstractmethod
+    def prepare_templates_for_target_node(self, config: Dict[str, Any],
+                                        node_selection: str, target_node: str) -> bool:
+        """
+        Подготовить шаблоны для целевой ноды
+
+        Args:
+            config: Конфигурация развертывания
+            node_selection: Стратегия выбора ноды
+            target_node: Целевая нода
+
+        Returns:
+            True если подготовка успешна
+        """
+        pass
+
+    @abstractmethod
+    def create_local_template(self, template_node: str, template_vmid: int,
+                            target_node: str, new_vmid: int) -> bool:
+        """Создать локальный шаблон на целевой ноде"""
+        pass
+
+    @abstractmethod
+    def get_template_mapping(self) -> Dict[str, int]:
+        """Получить mapping локальных шаблонов"""
+        pass
+```
+
+### 4. Интерфейс сети (core/interfaces/network_interface.py)
+```python
+from abc import ABC, abstractmethod
+from typing import Dict, List
+
+class NetworkInterface(ABC):
+    """Интерфейс для модулей управления сетью"""
+
+    @abstractmethod
+    def configure_network(self, vmid: int, node: str, networks: List[Dict],
+                         pool: str, device_type: str = 'linux') -> bool:
+        """
+        Настроить сетевые интерфейсы виртуальной машины
+
+        Args:
+            vmid: ID виртуальной машины
+            node: Нода размещения
+            networks: Конфигурация сетей
+            pool: Пул пользователя
+            device_type: Тип устройства
+
+        Returns:
+            True если настройка успешна
+        """
+        pass
+
+    @abstractmethod
+    def allocate_bridge(self, node: str, bridge_name: str, pool: str,
+                       reserved: bool = False) -> str:
+        """Выделить bridge для сети"""
+        pass
+
+    @abstractmethod
+    def cleanup_unused_bridges(self, nodes: List[str]) -> int:
+        """Очистить неиспользуемые bridge'ы"""
+        pass
+```
+
+## РЕАЛИЗАЦИИ МОДУЛЕЙ
+
+### Модуль базового развертывания (core/modules/deployment/basic_deployer.py)
+```python
+from core.interfaces.deployment_interface import DeploymentInterface
+from core.proxmox.proxmox_client import ProxmoxClient
+from core.users.user_manager import UserManager
+from core.templates.local_templates import LocalTemplateManager
+from core.network.bridge_manager import BridgeManager
+
+class BasicDeployer(DeploymentInterface):
+    """Базовая реализация развертывания виртуальных машин"""
+
+    def __init__(self, proxmox_client: ProxmoxClient, user_manager: UserManager,
+                 template_manager: LocalTemplateManager, bridge_manager: BridgeManager):
+        self.proxmox = proxmox_client
+        self.user_manager = user_manager
+        self.template_manager = template_manager
+        self.bridge_manager = bridge_manager
+
+    def deploy_configuration(self, users: List[str], config: Dict[str, Any],
+                           node_selection: str = "auto", target_node: str = None) -> Dict[str, str]:
+        """Базовое развертывание на одну ноду"""
+        results = {}
+
+        # Определить целевую ноду
+        nodes = self.proxmox.get_nodes()
+        target_node = self._select_target_node(nodes, node_selection, target_node)
+
+        # Подготовить шаблоны для целевой ноды
+        if not self.template_manager.prepare_templates_for_target_node(config, node_selection, target_node):
+            raise DeploymentError("Ошибка подготовки шаблонов")
+
+        # Развернуть для каждого пользователя
+        for user in users:
+            user_result = self._deploy_for_user(user, config, target_node)
+            results.update(user_result)
+
+        return results
+
+    def _deploy_for_user(self, user: str, config: Dict[str, Any], target_node: str) -> Dict[str, str]:
+        """Развертывание для одного пользователя"""
+        # Создать пользователя и пул
+        success, password = self.user_manager.create_user_and_pool(user)
+        if not success:
+            raise DeploymentError(f"Ошибка создания пользователя {user}")
+
+        # Создать виртуальные машины
+        pool_name = user.split('@')[0]
+        for machine_config in config['machines']:
+            self._create_machine(machine_config, target_node, pool_name)
+
+        return {user: password}
+```
+
+### Модуль интеллектуальной балансировки (core/modules/balancing/smart_balancer.py)
+```python
+from core.interfaces.balancing_interface import BalancingInterface
+from core.proxmox.proxmox_client import ProxmoxClient
+from utils.monitoring.metrics import PerformanceMetrics
+from utils.caching.cache_manager import CacheManager
+
+class SmartBalancer(BalancingInterface):
+    """Интеллектуальная балансировка с предиктивным анализом"""
+
+    def __init__(self, proxmox_client: ProxmoxClient,
+                 metrics: PerformanceMetrics, cache: CacheManager):
+        self.proxmox = proxmox_client
+        self.metrics = metrics
+        self.cache = cache
+        self.cache_ttl = 300  # 5 минут
+
+    def distribute_deployment(self, users: List[str], nodes: List[str],
+                            config: Dict = None) -> Dict[str, List[str]]:
+        """Интеллектуальное распределение пользователей"""
+        cache_key = f"distribution:{hash(str(users))}:{hash(str(nodes))}"
+
+        # Проверить кеш
+        cached_result = self.cache.get(cache_key)
+        if cached_result:
+            return cached_result
+
+        # Собрать метрики нод
+        node_metrics = self.analyze_node_load(nodes)
+
+        # Рассчитать веса нод
+        node_weights = self._calculate_node_weights(node_metrics, config)
+
+        # Предиктивный анализ требований пользователей
+        user_demand = self._estimate_user_resource_demand(users, config)
+
+        # Распределить пользователей
+        distribution = self._intelligent_distribution(users, nodes, node_weights, user_demand)
+
+        # Оптимизировать распределение
+        optimized_distribution = self._optimize_for_template_migration(distribution, config)
+
+        # Сохранить в кеш
+        self.cache.set(cache_key, optimized_distribution, self.cache_ttl)
+
+        return optimized_distribution
+
+    def analyze_node_load(self, nodes: List[str]) -> Dict[str, Dict[str, float]]:
+        """Комплексный анализ загруженности нод"""
+        node_metrics = {}
+
+        for node in nodes:
+            metrics = {
+                'vm_count': len(self.proxmox.get_vms_on_node(node)),
+                'cpu_usage': self.proxmox.get_node_cpu_usage(node),
+                'memory_usage': self.proxmox.get_node_memory_usage(node),
+                'storage_available': self.proxmox.get_node_storage_available(node),
+                'network_bandwidth': self._estimate_network_bandwidth(node),
+                'active_templates': self._count_active_templates(node)
+            }
+            node_metrics[node] = metrics
+
+        return node_metrics
+```
+
+### Модуль локальных шаблонов (core/modules/templates/local_templates.py)
+```python
+from core.interfaces.template_interface import TemplateInterface
+from core.proxmox.proxmox_client import ProxmoxClient
+from utils.caching.cache_manager import CacheManager
+
+class LocalTemplateManager(TemplateInterface):
+    """Управление локальными шаблонами виртуальных машин"""
+
+    def __init__(self, proxmox_client: ProxmoxClient, cache: CacheManager):
+        self.proxmox = proxmox_client
+        self.cache = cache
+        self.local_templates = {}  # Кеш локальных шаблонов
+
+    def prepare_templates_for_target_node(self, config: Dict[str, Any],
+                                        node_selection: str, target_node: str) -> bool:
+        """Подготовить шаблоны для целевой ноды"""
+        try:
+            # Загрузить существующие локальные шаблоны
+            self._load_local_templates_from_config()
+
+            # Определить требуемые шаблоны
+            required_templates = self._analyze_template_requirements(config, node_selection, target_node)
+
+            # Подготовить недостающие шаблоны
+            for template_key, template_info in required_templates.items():
+                if not self._is_template_available(template_key, target_node):
+                    success = self.create_local_template(
+                        template_info['template_node'],
+                        template_info['template_vmid'],
+                        target_node,
+                        template_info['new_vmid']
+                    )
+                    if not success:
+                        return False
+
+            # Сохранить mapping шаблонов
+            self._save_template_mapping()
+            return True
+
+        except Exception as e:
+            logger.error(f"Ошибка подготовки шаблонов: {e}")
+            return False
+
+    def create_local_template(self, template_node: str, template_vmid: int,
+                            target_node: str, new_vmid: int) -> bool:
+        """Создать локальный шаблон через миграцию"""
+        try:
+            # Проверка ресурсов перед миграцией
+            if not self._check_migration_resources(template_node, target_node):
+                return False
+
+            # Создать полный клон на исходной ноде
+            clone_task = self.proxmox.clone_vm(template_node, template_vmid, template_node,
+                                             new_vmid, f"template-{template_vmid}-{target_node}", None, full_clone=True)
+
+            # Преобразовать в шаблон
+            if not self.proxmox.wait_for_task(clone_task, template_node):
+                return False
+
+            self.proxmox.convert_to_template(template_node, new_vmid)
+
+            # Миграция на целевую ноду если необходимо
+            if template_node != target_node:
+                migration_task = self.proxmox.migrate_vm(template_node, new_vmid, target_node)
+                if not self.proxmox.wait_for_task(migration_task, template_node):
+                    # Откат
+                    self.proxmox.delete_vm(template_node, new_vmid)
+                    return False
+
+            # Сохранить в кеш
+            template_key = f"{template_vmid}:{target_node}"
+            self.local_templates[template_key] = new_vmid
+
+            return True
+
+        except Exception as e:
+            logger.error(f"Ошибка создания локального шаблона: {e}")
+            return False
+```
+
+### Модуль управления bridge'ами (core/modules/network/bridge_manager.py)
+```python
+from core.interfaces.network_interface import NetworkInterface
+from core.proxmox.proxmox_client import ProxmoxClient
+
+class BridgeManager(NetworkInterface):
+    """Управление сетевыми bridge'ами"""
+
+    def __init__(self, proxmox_client: ProxmoxClient):
+        self.proxmox = proxmox_client
+        self.bridge_cache = {}  # Кеш выделенных bridge'ей
+
+    def configure_network(self, vmid: int, node: str, networks: List[Dict],
+                         pool: str, device_type: str = 'linux') -> bool:
+        """Настроить сетевые интерфейсы виртуальной машины"""
+        try:
+            # Подготовить все необходимые bridge'ы
+            bridge_mapping = self._prepare_bridges(node, networks, pool)
+
+            # Подготовить конфигурации интерфейсов
+            network_configs = self._prepare_network_configs(networks, bridge_mapping, device_type)
+
+            # Пакетная настройка всех интерфейсов
+            return self.proxmox.configure_vm_network(vmid, node, network_configs)
+
+        except Exception as e:
+            logger.error(f"Ошибка настройки сети для VM {vmid}: {e}")
+            return False
+
+    def allocate_bridge(self, node: str, bridge_name: str, pool: str,
+                       reserved: bool = False) -> str:
+        """Выделить bridge для сети"""
+        # Проверка зарезервированных bridge'ей
+        if reserved or bridge_name.startswith('**'):
+            return bridge_name.strip('*')
+
+        # Генерация уникального имени bridge'а
+        cache_key = f"{node}:{pool}:{bridge_name}"
+        if cache_key in self.bridge_cache:
+            return self.bridge_cache[cache_key]
+
+        # Найти следующее доступное имя
+        base_name = bridge_name or "vmbr"
+        bridge = self._find_next_available_bridge(node, base_name)
+
+        # Создать bridge если не существует
+        if not self.proxmox.bridge_exists(node, bridge):
+            self.proxmox.create_bridge(node, bridge)
+
+        # Сохранить в кеш
+        self.bridge_cache[cache_key] = bridge
+        return bridge
+
+    def cleanup_unused_bridges(self, nodes: List[str]) -> int:
+        """Очистить неиспользуемые bridge'ы"""
+        cleaned_count = 0
+
+        for node in nodes:
+            # Получить все bridge'ы на ноде
+            all_bridges = self.proxmox.list_bridges(node)
+
+            for bridge in all_bridges:
+                # Пропустить системные bridge'ы
+                if bridge in ['vmbr0']:
+                    continue
+
+                # Проверить использование bridge'а
+                if not self.proxmox.bridge_in_use(node, bridge):
+                    # Удалить неиспользуемый bridge
+                    if self.proxmox.delete_bridge(node, bridge):
+                        cleaned_count += 1
+
+        return cleaned_count
+```
+
+## ФАБРИКА МОДУЛЕЙ
+
+### Модульная фабрика (core/module_factory.py)
+```python
+from typing import Dict, Any, Type
+from core.interfaces.deployment_interface import DeploymentInterface
+from core.interfaces.balancing_interface import BalancingInterface
+from core.interfaces.template_interface import TemplateInterface
+from core.interfaces.network_interface import NetworkInterface
+
+class ModuleFactory:
+    """Фабрика для создания и управления модулями"""
+
+    def __init__(self):
+        self.modules = {}
+        self.interfaces = {}
+
+    def register_deployment_module(self, name: str, module_class: Type[DeploymentInterface]):
+        """Зарегистрировать модуль развертывания"""
+        self.modules[f"deployment:{name}"] = module_class
+
+    def register_balancing_module(self, name: str, module_class: Type[BalancingInterface]):
+        """Зарегистрировать модуль балансировки"""
+        self.modules[f"balancing:{name}"] = module_class
+
+    def register_template_module(self, name: str, module_class: Type[TemplateInterface]):
+        """Зарегистрировать модуль шаблонов"""
+        self.modules[f"template:{name}"] = module_class
+
+    def register_network_module(self, name: str, module_class: Type[NetworkInterface]):
+        """Зарегистрировать сетевой модуль"""
+        self.modules[f"network:{name}"] = module_class
+
+    def create_deployment_module(self, name: str, **kwargs) -> DeploymentInterface:
+        """Создать модуль развертывания"""
+        module_class = self.modules.get(f"deployment:{name}")
+        if not module_class:
+            raise ValueError(f"Модуль развертывания '{name}' не найден")
+        return module_class(**kwargs)
+
+    def create_balancing_module(self, name: str, **kwargs) -> BalancingInterface:
+        """Создать модуль балансировки"""
+        module_class = self.modules.get(f"balancing:{name}")
+        if not module_class:
+            raise ValueError(f"Модуль балансировки '{name}' не найден")
+        return module_class(**kwargs)
+
+    def create_template_module(self, name: str, **kwargs) -> TemplateInterface:
+        """Создать модуль шаблонов"""
+        module_class = self.modules.get(f"template:{name}")
+        if not module_class:
+            raise ValueError(f"Модуль шаблонов '{name}' не найден")
+        return module_class(**kwargs)
+
+    def create_network_module(self, name: str, **kwargs) -> NetworkInterface:
+        """Создать сетевой модуль"""
+        module_class = self.modules.get(f"network:{name}")
+        if not module_class:
+            raise ValueError(f"Сетевой модуль '{name}' не найден")
+        return module_class(**kwargs)
+
+    def list_available_modules(self, module_type: str = None) -> List[str]:
+        """Получить список доступных модулей"""
+        if module_type:
+            return [name.split(':')[1] for name in self.modules.keys() if name.startswith(f"{module_type}:")]
+        return list(self.modules.keys())
+```
+
+## КОНФИГУРАЦИЯ МОДУЛЕЙ
+
+### Конфигурационный файл модулей (core/module_config.yml)
+```yaml
+# Конфигурация модулей системы
+modules:
+  deployment:
+    default: "basic"              # Модуль развертывания по умолчанию
+    available:
+      - "basic"                   # Базовый развертыватель
+      - "advanced"                # Продвинутый развертыватель
+
+  balancing:
+    default: "smart"              # Модуль балансировки по умолчанию
+    available:
+      - "simple"                  # Простая балансировка
+      - "smart"                   # Интеллектуальная балансировка
+
+  templates:
+    default: "local"              # Модуль шаблонов по умолчанию
+    available:
+      - "local"                   # Локальные шаблоны
+      - "migration"               # Миграция шаблонов
+
+  network:
+    default: "bridge"             # Сетевой модуль по умолчанию
+    available:
+      - "bridge"                  # Управление bridge'ами
+
+# Параметры модулей
+module_parameters:
+  balancing:
+    smart:
+      cache_ttl: 300              # Время жизни кеша (секунды)
+      optimization_threshold: 0.7 # Порог оптимизации распределения
+
+  templates:
+    local:
+      migration_timeout: 1800     # Таймаут миграции (секунды)
+      retry_attempts: 3           # Количество попыток
+
+  network:
+    bridge:
+      bridge_start_number: 1000   # Начальный номер для пользовательских bridge'ей
+      cleanup_interval: 3600      # Интервал очистки неиспользуемых bridge'ей
+```
+
+## ПРИМЕР ИСПОЛЬЗОВАНИЯ МОДУЛЬНОЙ АРХИТЕКТУРЫ
+
+### Инициализация системы с модулями (main.py)
+```python
+from core.module_factory import ModuleFactory
+from core.proxmox.proxmox_client import ProxmoxClient
+from core.config.config_manager import ConfigManager
+from utils.logging.logger import Logger
+from utils.caching.cache_manager import CacheManager
+from utils.monitoring.metrics import PerformanceMetrics
+
+def main():
+    """Инициализация модульной системы"""
+    try:
+        # Инициализировать базовые компоненты
+        logger = Logger()
+        cache = CacheManager()
+        metrics = PerformanceMetrics()
+        config_manager = ConfigManager()
+
+        # Создать фабрику модулей
+        module_factory = ModuleFactory()
+
+        # Зарегистрировать доступные модули
+        register_modules(module_factory)
+
+        # Создать Proxmox клиент
+        proxmox_config = config_manager.load_proxmox_config()
+        proxmox_client = ProxmoxClient(proxmox_config)
+
+        # Создать необходимые модули
+        deployment_module = module_factory.create_deployment_module(
+            "advanced",
+            proxmox_client=proxmox_client,
+            config_manager=config_manager,
+            cache=cache,
+            metrics=metrics
+        )
+
+        balancing_module = module_factory.create_balancing_module(
+            "smart",
+            proxmox_client=proxmox_client,
+            cache=cache,
+            metrics=metrics
+        )
+
+        template_module = module_factory.create_template_module(
+            "local",
+            proxmox_client=proxmox_client,
+            cache=cache
+        )
+
+        network_module = module_factory.create_network_module(
+            "bridge",
+            proxmox_client=proxmox_client
+        )
+
+        # Создать главное меню с модулями
+        menu = MainMenu(deployment_module, balancing_module, template_module, network_module)
+        menu.show()
+
+    except Exception as e:
+        logger.critical(f"Критическая ошибка инициализации: {e}")
+        sys.exit(1)
+
+def register_modules(factory: ModuleFactory):
+    """Регистрация доступных модулей"""
+    # Регистрация модулей развертывания
+    factory.register_deployment_module("basic", BasicDeployer)
+    factory.register_deployment_module("advanced", AdvancedDeployer)
+
+    # Регистрация модулей балансировки
+    factory.register_balancing_module("simple", SimpleBalancer)
+    factory.register_balancing_module("smart", SmartBalancer)
+
+    # Регистрация модулей шаблонов
+    factory.register_template_module("local", LocalTemplateManager)
+    factory.register_template_module("migration", MigrationTemplateManager)
+
+    # Регистрация сетевых модулей
+    factory.register_network_module("bridge", BridgeManager)
+```
+
+### Динамическая смена модулей во время выполнения
+```python
+class MainMenu:
+    def __init__(self, deployment_module, balancing_module, template_module, network_module):
+        self.deployment_module = deployment_module
+        self.balancing_module = balancing_module
+        self.template_module = template_module
+        self.network_module = network_module
+        self.module_factory = ModuleFactory()
+
+    def change_deployment_strategy(self, strategy_name: str):
+        """Динамически сменить модуль развертывания"""
+        try:
+            new_module = self.module_factory.create_deployment_module(
+                strategy_name,
+                proxmox_client=self.proxmox_client,
+                config_manager=self.config_manager,
+                cache=self.cache,
+                metrics=self.metrics
+            )
+            self.deployment_module = new_module
+            logger.info(f"Модуль развертывания изменен на: {strategy_name}")
+        except Exception as e:
+            logger.error(f"Ошибка смены модуля развертывания: {e}")
+
+    def get_available_strategies(self) -> List[str]:
+        """Получить список доступных стратегий развертывания"""
+        return self.module_factory.list_available_modules("deployment")
+```
+
+## ПРЕИМУЩЕСТВА МОДУЛЬНОЙ АРХИТЕКТУРЫ
+
+### 1. Изоляция функционала
+- Каждый модуль имеет четкую ответственность
+- Легкость понимания и сопровождения кода
+- Минимизация побочных эффектов
+
+### 2. Легкость тестирования
+- Каждый модуль можно тестировать независимо
+- Mock объекты для интерфейсов модулей
+- Unit тесты для каждого модуля отдельно
+
+### 3. Гибкость конфигурации
+- Легкая смена алгоритмов без изменения кода
+- Конфигурирование через YAML файлы
+- Добавление новых модулей без модификации существующих
+
+### 4. Производительность
+- Кеширование результатов в рамках модулей
+- Асинхронная обработка задач
+- Оптимизация алгоритмов внутри модулей
+
+### 5. Надежность
+- Обработка ошибок внутри модулей
+- Fallback стратегии при сбоях модулей
+- Логирование действий каждого модуля
+
+Этот модульный подход обеспечивает максимальную гибкость и удобство сопровождения системы Deploy-Stand.
+
+#### 1. Точка входа (main.py)
+```python
+# Реализовать:
+def main():
+    # - Создать экземпляр главного меню
+    # - Запустить главный цикл приложения
+    # - Обработать прерывания пользователя
+    # - Логировать критические ошибки
+```
+
+#### 2. Оптимизированный пользовательский интерфейс (app/ui/cli_menus.py)
+```python
+class MainMenu:
+    def __init__(self):
+        # - Инициализировать менеджеры: config, proxmox, vm_deployer, user_manager
+        # - Настроить подключение к Proxmox
+
+    def show(self):
+        """Оптимизированное главное меню с быстрым доступом к функциям"""
+        # Быстрый доступ к часто используемым функциям
+        quick_actions = {
+            'd': '4',  # d = deploy (развернуть)
+            'c': '1',  # c = create config (создать конфигурацию)
+            'u': '3',  # u = users (пользователи)
+            'x': '5',  # x = cleanup (очистка)
+        }
+
+        while True:
+            # Оптимизированное отображение меню с горячими клавишами
+            print("\n🚀 Deploy-Stand - Главное меню")
+            print("=" * 50)
+            print("📋 Основные функции:")
+            print("  [1] Создать конфигурацию развертывания")
+            print("  [2] Управление конфигурациями")
+            print("  [3] Указать список пользователей")
+            print("  [4] 🚀 Развернуть конфигурацию")
+            print("  [5] 🗑️  Удалить машины пользователей")
+            print("  [6] Удалить машины конкретного пользователя")
+            print("  [7] ⚙️  Управление подключением")
+            print("  [0] Выход")
+            print("\n⚡ Быстрые команды:")
+            print("  d = Развернуть | c = Создать конфиг | u = Пользователи | x = Очистка")
+
+            # Оптимизированный ввод с поддержкой быстрых команд
+            choice = input("\nВыберите действие: ").strip().lower()
+
+            # Обработка быстрых команд
+            if choice in quick_actions:
+                choice = quick_actions[choice]
+
+            # Обработка выбора с улучшенной навигацией
+            action_result = self._handle_menu_choice(choice)
+            if action_result == "exit":
+                break
+            elif action_result == "repeat":
+                continue
+
+    def _handle_menu_choice(self, choice: str) -> str:
+        """Централизованная обработка выбора меню с оптимизацией"""
+        menu_actions = {
+            "1": lambda: self._create_deployment_config(),
+            "2": lambda: self._manage_configs_menu(),
+            "3": lambda: self._manage_users_menu(),
+            "4": lambda: self._deploy_menu(),
+            "5": lambda: self._delete_all_users_resources(),
+            "6": lambda: self._delete_single_user_resources(),
+            "7": lambda: self._manage_connection_config_menu(),
+            "0": lambda: "exit"
+        }
+
+        action = menu_actions.get(choice)
+        if action:
+            try:
+                return action() if callable(action) else action
+            except Exception as e:
+                logger.error(f"Ошибка выполнения действия {choice}: {e}")
+                print(f"❌ Ошибка: {e}")
+                return "repeat"
+        else:
+            print("❌ Неверный выбор! Используйте цифры 0-7 или быстрые команды (d, c, u, x)")
+            return "repeat"
+
+    def _setup_proxmox_connection(self):
+        """Оптимизированная настройка подключения с автодетектом"""
+        # Загрузить сохраненные конфигурации подключения
+        # Показать список доступных конфигураций
+        # Получить данные для подключения (host, user, password/token)
+        # Создать подключение к Proxmox API
+        # Сохранить конфигурацию подключения (опционально)
+
+    def _create_deployment_config(self):
+        """Оптимизированное создание конфигурации с автодополнением"""
+        print("\n🚀 Создание конфигурации развертывания")
+        print("=" * 50)
+
+        # Быстрый выбор популярных конфигураций
+        print("Популярные шаблоны:")
+        print("  [1] Студенческий стенд (Linux VM + сеть)")
+        print("  [2] Сетевой стенд (Router + несколько сетей)")
+        print("  [3] Кастомная конфигурация")
+        print("  [0] Назад")
+
+        template_choice = input("Выберите шаблон (1-3) или 0 для назад: ").strip()
+
+        if template_choice == "0":
+            return "repeat"
+        elif template_choice in ["1", "2"]:
+            # Использовать предустановленные шаблоны
+            return self._create_config_from_template(template_choice)
+        elif template_choice == "3":
+            # Кастомная конфигурация
+            return self._create_custom_config()
+        else:
+            print("❌ Неверный выбор!")
+            return "repeat"
+
+    def _deploy_menu(self):
+        """Оптимизированное меню развертывания с предустановками"""
+        print("\n🚀 Развертывание конфигурации")
+        print("=" * 50)
+
+        # Показать доступные конфигурации
+        configs = self.config_manager.list_configs()
+        if not configs:
+            print("❌ Нет доступных конфигураций!")
+            print("💡 Создайте конфигурацию в меню 1 или используйте deployment_config.yml")
+            return "repeat"
+
+        print("Доступные конфигурации:")
+        for i, config_name in enumerate(configs, 1):
+            print(f"  [{i}] {config_name}")
+
+        print("\nБыстрый выбор:")
+        print("  [default] - использовать deployment_config.yml")
+        print("  [last] - последняя использованная конфигурация")
+        print("  [номер] - выбрать по номеру")
+
+        choice = input("\nВыберите конфигурацию: ").strip().lower()
+
+        # Обработка быстрых выборов
+        if choice == "default":
+            config = self.config_manager.load_deployment_config()
+            config_name = "deployment_config.yml"
+        elif choice == "last":
+            # Загрузить последнюю использованную конфигурацию
+            config = self._load_last_used_config()
+            config_name = "последняя"
+        else:
+            try:
+                config_index = int(choice) - 1
+                if 0 <= config_index < len(configs):
+                    config = self.config_manager.load_config(configs[config_index])
+                    config_name = configs[config_index]
+                else:
+                    print(f"❌ Выберите номер от 1 до {len(configs)}")
+                    return "repeat"
+            except ValueError:
+                print("❌ Введите номер или 'default'/'last'")
+                return "repeat"
+
+        if not config:
+            print("❌ Ошибка загрузки конфигурации!")
+            return "repeat"
+
+        # Оптимизированные стратегии развертывания
+        print("\nСтратегии развертывания:")
+        print("  [1] 🚀 Быстрое (одна нода) - рекомендуется для теста")
+        print("  [2] ⚖️  Балансировка (все ноды) - рекомендуется для production")
+        print("  [3] 🎯 Конкретная нода")
+
+        strategy_choice = input("Выберите стратегию (1-3) [1]: ").strip() or "1"
+
+        if strategy_choice == "1":
+            node_selection = "auto"
+            target_node = None
+        elif strategy_choice == "2":
+            node_selection = "balanced"
+            target_node = None
+        elif strategy_choice == "3":
+            node_selection = "specific"
+            nodes = self.proxmox_manager.get_nodes()
+            print(f"Доступные ноды: {', '.join(nodes)}")
+            target_node = input("Введите имя целевой ноды: ").strip()
+        else:
+            print("❌ Неверный выбор стратегии!")
+            return "repeat"
+
+        # Запуск развертывания с прогресс-баром
+        print(f"\n🚀 Начинаем развертывание '{config_name}'...")
+        print("Стратегия:", "балансировка" if node_selection == "balanced" else "одиночная нода")
+
+        try:
+            results = self.vm_deployer.deploy_configuration(
+                self.config_manager.load_users(),
+                config,
+                node_selection,
+                target_node
+            )
+
+            # Красивый вывод результатов
+            print(f"\n✅ Развертывание завершено!")
+            print(f"Создано пользователей: {len(results)}")
+
+            if results:
+                print("\n📋 Результаты:")
+                print("-" * 60)
+                print(f"{'Пользователь'"<20"} {'Пароль'"<20"}")
+                print("-" * 60)
+                for user, password in results.items():
+                    print(f"{user"<20"} {password"<20"}")
+            else:
+                print("❌ Не удалось создать ни одного пользователя")
+
+        except Exception as e:
+            print(f"❌ Ошибка развертывания: {e}")
+
+        input("\nНажмите Enter для продолжения...")
+        return "repeat"
+
+    def _manage_users_menu(self):
+        """Оптимизированное управление пользователями"""
+        print("\n👥 Управление пользователями")
+        print("=" * 50)
+
+        print("Быстрые действия:")
+        print("  [1] Ввести пользователей вручную")
+        print("  [2] Загрузить из файла")
+        print("  [3] Показать текущий список")
+        print("  [4] Очистить список")
+        print("  [0] Назад")
+
+        choice = input("Выберите действие: ").strip()
+
+        if choice == "1":
+            users_input = input("Введите пользователей через запятую (user1@pve,user2@pve): ")
+            users = [user.strip() for user in users_input.split(',') if user.strip()]
+            if self.config_manager.save_users(users):
+                print(f"✅ Сохранено {len(users)} пользователей")
+            else:
+                print("❌ Ошибка сохранения")
+        elif choice == "2":
+            file_path = input("Путь к файлу со списком пользователей: ").strip()
+            if self.config_manager.save_users_from_file(file_path):
+                print("✅ Пользователи загружены из файла")
+            else:
+                print("❌ Ошибка загрузки файла")
+        elif choice == "3":
+            users = self.config_manager.load_users()
+            if users:
+                print(f"\nТекущий список пользователей ({len(users)}):")
+                for i, user in enumerate(users, 1):
+                    print(f"  {i}. {user}")
+            else:
+                print("❌ Список пользователей пуст")
+        elif choice == "4":
+            confirm = input("Очистить список пользователей? (y/n): ")
+            if confirm.lower() == 'y':
+                if self.config_manager.save_users([]):
+                    print("✅ Список пользователей очищен")
+                else:
+                    print("❌ Ошибка очистки")
+        elif choice == "0":
+            return "repeat"
+        else:
+            print("❌ Неверный выбор!")
+
+        input("\nНажмите Enter для продолжения...")
+        return "repeat"
+
+    def _delete_all_users_resources(self):
+        """Оптимизированная пакетная очистка с подтверждением"""
+        users = self.config_manager.load_users()
+
+        if not users:
+            print("❌ Список пользователей пуст!")
+            return "repeat"
+
+        print(f"\n🗑️  Пакетное удаление ресурсов")
+        print("=" * 50)
+        print(f"Найдено пользователей: {len(users)}")
+        print("Будут удалены:")
+        print("  • Все виртуальные машины пользователей")
+        print("  • Пулы пользователей")
+        print("  • Учетные записи пользователей")
+        print("  • Неиспользуемые сетевые bridge'ы")
+
+        # Безопасное подтверждение
+        confirm = input("\nВы уверены? Введите 'DELETE_ALL' для подтверждения: ").strip()
+
+        if confirm == "DELETE_ALL":
+            print("🗑️  Начинаем удаление...")
+            results = self.user_manager.delete_user_resources_batch(users)
+
+            print("
+📊 Результаты удаления:"            print(f"  ✅ Успешно: {len(results['successful'])}")
+            print(f"  ❌ Ошибок: {len(results['failed'])}")
+            print(f"  ⏭️  Пропущено: {len(results['skipped'])}")
+
+            if results['failed']:
+                print(f"\n❌ Не удалось удалить: {', '.join(results['failed'])}")
+        else:
+            print("❌ Операция отменена")
+
+        input("\nНажмите Enter для продолжения...")
+        return "repeat"
+
+    def _manage_configs_menu(self):
+        """Оптимизированное управление конфигурациями"""
+        print("\n⚙️  Управление конфигурациями")
+        print("=" * 50)
+
+        configs = self.config_manager.list_configs()
+
+        if configs:
+            print(f"Найдено конфигураций: {len(configs)}")
+            for i, config_name in enumerate(configs, 1):
+                print(f"  [{i}] {config_name}")
+
+            print("\nДоступные действия:")
+            print("  [1] Создать новую конфигурацию")
+            print("  [2] Показать детали конфигурации")
+            print("  [3] Удалить конфигурацию")
+            print("  [4] Копировать конфигурацию")
+            print("  [0] Назад")
+
+            choice = input("Выберите действие: ").strip()
+
+            if choice == "1":
+                config_name = input("Имя новой конфигурации: ").strip()
+                if config_name:
+                    nodes = self.proxmox_manager.get_nodes()
+                    self.config_manager.create_named_config(config_name, nodes, self.proxmox_manager)
+                else:
+                    print("❌ Имя конфигурации не может быть пустым!")
+            elif choice == "2":
+                # Показать детали выбранной конфигурации
+                self._show_config_details(configs)
+            elif choice == "3":
+                # Удалить конфигурацию
+                self._delete_config_interactive(configs)
+            elif choice == "4":
+                # Копировать конфигурацию
+                self._copy_config_interactive(configs)
+            else:
+                print("❌ Неверный выбор!")
+        else:
+            print("❌ Конфигурации не найдены!")
+            print("💡 Создайте первую конфигурацию в меню 1")
+
+        input("\nНажмите Enter для продолжения...")
+        return "repeat"
+
+    def _show_config_details(self, configs):
+        """Показать детали конфигурации"""
+        try:
+            config_num = int(input("Выберите номер конфигурации: ")) - 1
+            if 0 <= config_num < len(configs):
+                config = self.config_manager.load_config(configs[config_num])
+                if config:
+                    print(f"\nДетали конфигурации '{configs[config_num]}':")
+                    print(f"  Машин в конфигурации: {len(config.get('machines', []))}")
+                    for i, machine in enumerate(config.get('machines', []), 1):
+                        print(f"\n  Машина {i}:")
+                        print(f"    Тип: {machine.get('device_type', 'linux')}")
+                        print(f"    Имя: {machine.get('name', 'не указано')}")
+                        print(f"    Шаблон: VMID {machine.get('template_vmid')} на ноде {machine.get('template_node')}")
+                        print(f"    Сетей: {len(machine.get('networks', []))}")
+                        print(f"    Клонирование: {'полное' if machine.get('full_clone') else 'связанное'}")
+                else:
+                    print("❌ Ошибка загрузки конфигурации")
+            else:
+                print(f"❌ Выберите номер от 1 до {len(configs)}")
+        except ValueError:
+            print("❌ Введите корректный номер")
+
+    def _delete_config_interactive(self, configs):
+        """Интерактивное удаление конфигурации"""
+        try:
+            config_num = int(input("Выберите номер конфигурации для удаления: ")) - 1
+            if 0 <= config_num < len(configs):
+                config_name = configs[config_num]
+                confirm = input(f"Удалить конфигурацию '{config_name}'? (y/n): ")
+                if confirm.lower() == 'y':
+                    self.config_manager.delete_config(config_name)
+                    print(f"✅ Конфигурация '{config_name}' удалена")
+                else:
+                    print("❌ Операция отменена")
+            else:
+                print(f"❌ Выберите номер от 1 до {len(configs)}")
+        except ValueError:
+            print("❌ Введите корректный номер")
+
+    def _copy_config_interactive(self, configs):
+        """Интерактивное копирование конфигурации"""
+        try:
+            source_num = int(input("Выберите номер конфигурации для копирования: ")) - 1
+            if 0 <= source_num < len(configs):
+                new_name = input("Введите имя для копии: ").strip()
+                if new_name:
+                    # Логика копирования конфигурации
+                    print(f"✅ Конфигурация '{configs[source_num]}' скопирована как '{new_name}'")
+                else:
+                    print("❌ Имя не может быть пустым!")
+            else:
+                print(f"❌ Выберите номер от 1 до {len(configs)}")
+        except ValueError:
+            print("❌ Введите корректный номер")
+
+    def _load_last_used_config(self):
+        """Загрузить последнюю использованную конфигурацию"""
+        # Логика загрузки последней конфигурации из истории
+        return self.config_manager.load_deployment_config()
+
+    def _create_config_from_template(self, template_type):
+        """Создать конфигурацию из шаблона"""
+        print(f"\n📋 Создание конфигурации из шаблона {template_type}")
+        print("=" * 50)
+
+        if template_type == "1":
+            # Шаблон студенческого стенда
+            config_name = input("Имя конфигурации [student-lab]: ").strip() or "student-lab"
+            num_students = input("Количество студентов [10]: ").strip() or "10"
+
+            print("✅ Создан шаблон студенческого стенда")
+            print(f"   Конфигурация: {config_name}")
+            print(f"   Студентов: {num_students}")
+            print("   Включает: Linux VM, сеть, базовые настройки")
+
+        elif template_type == "2":
+            # Шаблон сетевого стенда
+            config_name = input("Имя конфигурации [router-lab]: ").strip() or "router-lab"
+            num_routers = input("Количество роутеров [3]: ").strip() or "3"
+
+            print("✅ Создан шаблон сетевого стенда")
+            print(f"   Конфигурация: {config_name}")
+            print(f"   Роутеров: {num_routers}")
+            print("   Включает: Ecorouter устройства, несколько сетей")
+
+        input("\nНажмите Enter для продолжения...")
+        return "repeat"
+
+    def _create_custom_config(self):
+        """Создать кастомную конфигурацию"""
+        print("\n🔧 Создание кастомной конфигурации")
+        print("=" * 50)
+        print("💡 Используйте меню 1 для создания кастомной конфигурации")
+        input("\nНажмите Enter для продолжения...")
+        return "repeat"
+```
+
+#### 3. Управление подключением к Proxmox (app/core/proxmox_manager.py)
+```python
+class ProxmoxManager:
+    def __init__(self):
+        # - Инициализировать объект подключения к Proxmox API
+
+    def connect(self, host, user, password=None, token_name=None, token_value=None):
+        # - Поддержать два способа аутентификации:
+        #   * По паролю (password)
+        #   * По токену (token_name + token_value)
+        # - Создать подключение через proxmoxer.ProxmoxAPI
+        # - Проверить подключение вызовом API
+        # - Вернуть статус успеха/ошибки
+
+    def get_nodes(self):
+        # - Получить список всех нод в кластере
+        # - Вернуть список имен нод
+
+    def get_next_vmid(self):
+        # - Получить следующий доступный VMID из кластера
+        # - Использовать cluster.nextid API
+
+    def clone_vm(self, template_node, template_vmid, target_node, new_vmid, name, pool, full_clone=False):
+        # - Клонировать виртуальную машину
+        # - Поддержать linked и full clone
+        # - Обработать клонирование между разными нодами
+
+    def ensure_bridge(self, node, bridge_name):
+        # - Создать сетевой bridge если он не существует
+        # - Обновить сетевую конфигурацию ноды
+
+    def delete_vm(self, node, vmid):
+        # - Остановить виртуальную машину
+        # - Удалить виртуальную машину
+        # - Обработать ошибки удаления с повторными попытками
+```
+
+#### 4. Управление конфигурациями (app/core/config.py)
+```python
+class ConfigManager:
+    # Константы для путей к файлам
+    CONFIG_DIR = "data"
+    CONFIG_FILE = "data/deployment_config.yml"
+    USERS_FILE = "data/users_list.yml"
+    CONFIGS_DIR = "data/configs"
+    CONNECTIONS_FILE = "data/connections_config.yml"
+
+    @staticmethod
+    def create_deployment_config(nodes, proxmox_manager):
+        # - Запросить у пользователя параметры конфигурации:
+        #   * Количество машин в конфигурации
+        #   * Для каждой машины:
+        #     - Тип устройства (linux/ecorouter)
+        #     - Имя машины
+        #     - Нода шаблона
+        #     - VMID шаблона
+        #     - Сетевые интерфейсы (bridge'ы)
+        #     - Тип клонирования (linked/full)
+        # - Сохранить конфигурацию в YAML файл
+
+    @staticmethod
+    def load_deployment_config():
+        # - Загрузить конфигурацию развертывания из YAML файла
+        # - Вернуть словарь с конфигурацией
+
+    @staticmethod
+    def save_users(users_list):
+        # - Сохранить список пользователей в YAML файл
+        # - Формат: users: [user1@pve, user2@pve, ...]
+
+    @staticmethod
+    def load_users():
+        # - Загрузить список пользователей из YAML файла
+        # - Вернуть список пользователей
+```
+
+#### 5. Управление пользователями (app/core/user_manager.py)
+```python
+class UserManager:
+    def __init__(self, proxmox_manager):
+        # - Сохранить ссылку на proxmox_manager
+
+    def create_user_and_pool(self, username):
+        # - Создать пользователя в Proxmox
+        # - Создать пул для пользователя
+        # - Сгенерировать случайный пароль
+        # - Настроить права доступа пользователя к пулу
+        # - Вернуть (success, password)
+
+    def delete_user_resources_batch(self, users):
+        # - Для каждого пользователя:
+        #   * Остановить все его виртуальные машины
+        #   * Удалить виртуальные машины
+        #   * Удалить пул пользователя
+        #   * Удалить пользователя
+        # - Вернуть результаты операций
+```
+
+#### 6. Логика развертывания (app/core/vm_deployer.py)
+```python
+class VMDeployer:
+    def __init__(self, proxmox_manager):
+        # - Инициализировать менеджеры:
+        #   * user_manager
+        #   * template_manager
+        #   * vm_operations
+        #   * deployment_distributor
+
+    def deploy_configuration(self, users, config, node_selection="auto", target_node=None):
+        # - Подготовить шаблоны для целевых нод
+        # - Проверить отсутствие конфликтов
+        # - Для каждого пользователя:
+        #   * Создать пользователя и пул
+        #   * Создать виртуальные машины согласно конфигурации
+        #   * Настроить сетевые интерфейсы
+        # - Вернуть словарь {user: password}
+
+    def _prepare_templates_for_target_node(self, config, node_selection, target_node):
+        # - Определить какие шаблоны нужны на каких нодах
+        # - Создать локальные шаблоны через миграцию если нужно
+        # - Сохранить mapping шаблонов
+```
+
+#### 7. Балансировщик нагрузки (app/core/balanced_deployer.py)
+```python
+class BalancedDeployer:
+    def __init__(self, proxmox_manager, vm_deployer):
+        # - Сохранить ссылки на менеджеры
+
+    def deploy_balanced(self, users, config):
+        # - Проанализировать загруженность всех нод
+        # - Распределить пользователей по нодам равномерно
+        # - Развернуть конфигурацию с учетом распределения
+        # - Вернуть результаты развертывания
+```
+
+#### 8. Управление шаблонами (app/core/template_manager.py)
+```python
+class TemplateManager:
+    def __init__(self, proxmox_manager):
+        # - Загрузить существующие mapping шаблонов
+
+    def prepare_templates_for_target_node(self, config, node_selection, target_node):
+        # - Определить какие шаблоны нужны локально
+        # - Создать локальные шаблоны через миграцию
+        # - Сохранить информацию о созданных шаблонах
+
+    def save_template_mapping(self):
+        # - Сохранить mapping локальных шаблонов в YAML файл
+```
+
+#### 9. Операции с виртуальными машинами (app/core/vm_operations.py)
+```python
+class VMOperations:
+    def __init__(self, proxmox_manager):
+        # - Сохранить ссылку на proxmox_manager
+
+    def create_user_vms(self, config, target_node, pool):
+        # - Для каждой машины в конфигурации:
+        #   * Получить или создать локальный шаблон
+        #   * Клонировать виртуальную машину
+        #   * Добавить в пул пользователя
+        #   * Настроить сетевые интерфейсы
+
+    def check_existing_vms_in_pools(self, users, config):
+        # - Проверить нет ли уже виртуальных машин в пулах пользователей
+        # - Вернуть True если можно продолжать развертывание
+```
+
+#### 10. Распределитель ресурсов (app/core/deployment_distributor.py)
+```python
+class DeploymentDistributor:
+    def __init__(self, proxmox_manager):
+        # - Сохранить ссылку на proxmox_manager
+
+    def distribute_deployment(self, users, nodes):
+        # - Проанализировать текущую нагрузку нод
+        # - Рассчитать оптимальное распределение пользователей
+        # - Вернуть словарь {node: [users]}
+```
+
+## КЛЮЧЕВЫЕ АЛГОРИТМЫ ДЛЯ РЕАЛИЗАЦИИ
+
+### Алгоритм 1: Оптимизированное создание локального шаблона через миграцию
+```python
+def create_local_template_via_migration(template_node, template_vmid, target_node, new_vmid, name, pool):
+    """
+    Оптимизированный алгоритм создания локального шаблона:
+    - Предварительная проверка ресурсов
+    - Параллельное выполнение задач
+    - Обработка ошибок с откатом
+    - Кеширование результатов
+    """
+
+    # 1. Предварительная проверка ресурсов и доступности
+    if not check_node_resources(template_node, target_node):
+        return False
+
+    # 2. Проверка существования локального шаблона в кеше
+    cache_key = f"{template_vmid}:{target_node}"
+    if check_template_cache(cache_key, new_vmid):
+        return True
+
+    # 3. Создать полный клон на исходной ноде асинхронно
+    clone_task = proxmox.nodes(template_node).qemu(template_vmid).clone.post(
+        newid=new_vmid,
+        name=f"temp-{template_vmid}-{target_node}",
+        target=template_node,
+        full=1
+    )
+
+    # 4. Запустить задачу преобразования в шаблон параллельно
+    template_task = None
+    if wait_for_task(clone_task, template_node, timeout=600):
+        template_task = proxmox.nodes(template_node).qemu(new_vmid).template.post()
+
+    # 5. Оптимизированная миграция с предпроверкой сети
+    if template_node != target_node:
+        if not check_migration_path(template_node, target_node):
+            # Альтернатива: создать шаблон локально на целевой ноде
+            return create_template_locally(target_node, template_vmid, new_vmid)
+
+        migration_task = proxmox.nodes(template_node).qemu(new_vmid).migrate.post(
+            target=target_node,
+            online=1,
+            timeout=1800
+        )
+
+        if not wait_for_task(migration_task, template_node):
+            # Откат: удалить неудачно мигрированный шаблон
+            cleanup_failed_template(template_node, new_vmid)
+            return False
+
+    # 6. Кешировать результат для повторного использования
+    update_template_cache(cache_key, new_vmid, target_node)
+    return True
+```
+
+### Алгоритм 2: Оптимизированная настройка сетевых интерфейсов
+```python
+def configure_network(vmid, node, networks, pool, device_type='linux'):
+    """
+    Оптимизированная настройка сети:
+    - Предварительная подготовка всех bridge'ей
+    - Пакетная настройка интерфейсов
+    - Кеширование MAC-адресов для ecorouter
+    - Обработка ошибок с повторными попытками
+    """
+
+    # 1. Предварительная подготовка всех необходимых bridge'ей
+    bridge_cache = {}
+    for network in networks:
+        bridge_name = network['bridge']
+        if network.get('reserved', False):
+            bridge_cache[bridge_name] = bridge_name
+        else:
+            bridge_cache[bridge_name] = allocate_bridge_for_network(node, bridge_name, pool)
+
+    # 2. Подготовить все сетевые конфигурации заранее
+    network_configs = {}
+
+    # Обработка ecorouter устройств
+    if device_type == 'ecorouter':
+        mac = generate_ecorouter_mac()
+        network_configs['net0'] = f'model=vmxnet3,bridge=vmbr0,macaddr={mac},link_down=1'
+
+    # 3. Подготовить конфигурации для всех интерфейсов
+    for i, network in enumerate(networks):
+        net_id = f"net{i+1}" if device_type != 'ecorouter' else f"net{i+2}"
+        bridge = bridge_cache[network['bridge']]
+
+        if device_type == 'ecorouter':
+            mac = generate_ecorouter_mac()
+            network_configs[net_id] = f'model=vmxnet3,bridge={bridge},macaddr={mac}'
+        else:
+            network_configs[net_id] = f'model=virtio,bridge={bridge},firewall=1'
+
+    # 4. Пакетная настройка всех интерфейсов
+    max_retries = 3
+    for attempt in range(max_retries):
+        try:
+            # Настроить все интерфейсы одним вызовом API
+            proxmox.nodes(node).qemu(vmid).config.post(**network_configs)
+            break
+        except Exception as e:
+            if attempt == max_retries - 1:
+                logger.error(f"Ошибка настройки сети для VM {vmid}: {e}")
+                return False
+            time.sleep(2 ** attempt)  # Экспоненциальная задержка
+
+    return True
+```
+
+### Алгоритм 3: Интеллектуальная балансировка нагрузки между нодами
+```python
+def distribute_deployment(users, nodes, config=None):
+    """
+    Интеллектуальный алгоритм балансировки нагрузки:
+    - Многофакторный анализ загруженности нод
+    - Предиктивное распределение ресурсов
+    - Учет шаблонов и сетевых ресурсов
+    - Оптимизация для минимизации миграций шаблонов
+    """
+
+    if not users:
+        return {}
+
+    # 1. Сбор комплексной информации о нодах
+    node_metrics = {}
+    for node in nodes:
+        metrics = {
+            'vm_count': len(proxmox.nodes(node).qemu.get()),
+            'cpu_usage': get_node_cpu_usage(node),
+            'memory_usage': get_node_memory_usage(node),
+            'storage_available': get_node_storage_available(node),
+            'network_bandwidth': estimate_network_bandwidth(node),
+            'active_templates': count_active_templates(node)
+        }
+        node_metrics[node] = metrics
+
+    # 2. Расчет весовых коэффициентов для каждой ноды
+    node_weights = calculate_node_weights(node_metrics, config)
+
+    # 3. Предиктивный анализ потребления ресурсов
+    user_resource_demand = estimate_user_resource_demand(users, config)
+
+    # 4. Интеллектуальное распределение с учетом всех факторов
+    distribution = intelligent_distribution(users, nodes, node_weights, user_resource_demand)
+
+    # 5. Оптимизация распределения для минимизации миграций шаблонов
+    optimized_distribution = optimize_for_template_migration(distribution, config)
+
+    return optimized_distribution
+
+def calculate_node_weights(node_metrics, config):
+    """Расчет весовых коэффициентов нод на основе множественных факторов"""
+    weights = {}
+
+    for node, metrics in node_metrics.items():
+        # Базовый вес на основе количества VM (меньше = лучше)
+        vm_weight = 1 / (1 + metrics['vm_count'])
+
+        # CPU weight (ниже использование = выше вес)
+        cpu_weight = 1 / (1 + metrics['cpu_usage'])
+
+        # Memory weight (больше доступной памяти = выше вес)
+        memory_weight = 1 / (1 + (1 - metrics['memory_usage']))
+
+        # Storage weight (больше места = выше вес)
+        storage_weight = metrics['storage_available']
+
+        # Комбинированный вес с настраиваемыми коэффициентами
+        total_weight = (vm_weight * 0.3 + cpu_weight * 0.25 +
+                       memory_weight * 0.25 + storage_weight * 0.2)
+
+        weights[node] = total_weight
+
+    return weights
+
+def intelligent_distribution(users, nodes, node_weights, user_demand):
+    """Интеллектуальное распределение пользователей по нодам"""
+    distribution = {node: [] for node in nodes}
+
+    # Нормализация весов
+    total_weight = sum(node_weights.values())
+    if total_weight == 0:
+        # Fallback: равномерное распределение
+        return fallback_distribution(users, nodes)
+
+    normalized_weights = {node: weight/total_weight for node, weight in node_weights.items()}
+
+    # Распределение пользователей с учетом их потребностей
+    for user in users:
+        # Выбор лучшей ноды для пользователя
+        best_node = select_best_node_for_user(user, nodes, normalized_weights, user_demand)
+
+        if best_node:
+            distribution[best_node].append(user)
+        else:
+            # Fallback на ноду с минимальной загруженностью
+            least_loaded_node = min(nodes, key=lambda x: node_weights[x])
+            distribution[least_loaded_node].append(user)
+
+    return distribution
+
+def select_best_node_for_user(user, nodes, node_weights, user_demand):
+    """Выбор оптимальной ноды для конкретного пользователя"""
+    best_node = None
+    best_score = -1
+
+    for node in nodes:
+        # Расчет совместимости пользователя с нодой
+        compatibility_score = calculate_user_node_compatibility(user, node, user_demand)
+
+        # Комбинированный score
+        total_score = node_weights[node] * 0.7 + compatibility_score * 0.3
+
+        if total_score > best_score:
+            best_score = total_score
+            best_node = node
+
+    return best_node
+
+def optimize_for_template_migration(distribution, config):
+    """Оптимизация распределения для минимизации миграций шаблонов"""
+    if not config:
+        return distribution
+
+    optimized = {node: [] for node in distribution.keys()}
+
+    # Анализ требований к шаблонам для каждой группы пользователей
+    template_requirements = analyze_template_requirements(distribution, config)
+
+    # Перераспределение для оптимизации использования шаблонов
+    for node, users in distribution.items():
+        if users:
+            # Проверить эффективность использования шаблонов на этой ноде
+            template_efficiency = calculate_template_efficiency(node, users, config)
+
+            if template_efficiency < 0.7:  # Если эффективность ниже 70%
+                # Попытаться переместить пользователей на более эффективные ноды
+                moved_users = optimize_user_placement(users, node, distribution, config)
+                optimized[node] = moved_users
+            else:
+                optimized[node] = users
+
+    return optimized
+```
+
+## СТРУКТУРА КОНФИГУРАЦИОННЫХ ФАЙЛОВ
+
+### deployment_config.yml
+```yaml
+machines:
+  - device_type: "linux"           # Тип: linux или ecorouter
+    name: "student-pc"             # Имя создаваемой машины
+    template_node: "pve1"          # Нода где находится шаблон
+    template_vmid: 100             # VMID шаблона-источника
+    networks:
+      - bridge: "vmbr0"            # Интернет
+      - bridge: "lab-net"          # Локальная сеть
+      - bridge: "**vmbr100**"      # Зарезервированный интерфейс
+    full_clone: false              # false = linked clone, true = full clone
+```
+
+### users_list.yml
+```yaml
+users:
+  - "student1@pve"
+  - "student2@pve"
+  - "student3@pve"
+```
+
+### connections_config.yml
+```yaml
+"prod-cluster":
+  host: "192.168.1.100:8006"
+  user: "root@pam"
+  use_token: false
+  password: "encrypted_password"
+
+"dev-cluster":
+  host: "192.168.1.101:8006"
+  user: "admin@pve"
+  use_token: true
+  token_name: "deploy-script"
+  token_value: "encrypted_token"
+```
+
+## ВСПОМОГАТЕЛЬНЫЕ УТИЛИТЫ
+
+### Логирование (app/utils/logger.py)
+```python
+class Logger:
+    @staticmethod
+    def info(message):
+        # Логировать информационные сообщения
+
+    @staticmethod
+    def success(message):
+        # Логировать успешные операции
+
+    @staticmethod
+    def error(message):
+        # Логировать ошибки
+
+    @staticmethod
+    def warning(message):
+        # Логировать предупреждения
+```
+
+### Консольный вывод (app/utils/console.py)
+```python
+def emphasize(text):
+    # Выделить текст в консоли (цвет, яркость)
+    return text
+
+def print_header(text):
+    # Напечатать заголовок с форматированием
+    print(f"=== {text} ===")
+```
+
+## ПОСЛЕДОВАТЕЛЬНОСТЬ РАЗРАБОТКИ
+
+### Этап 1: Базовая инфраструктура
+1. Создать структуру папок и файлов
+2. Реализовать базовое логирование с уровнями (DEBUG, INFO, WARNING, ERROR)
+3. Создать конфигурационные файлы с валидацией
+4. Добавить обработку ошибок и исключений
+
+### Этап 2: Подключение к Proxmox
+1. Реализовать ProxmoxManager с поддержкой аутентификации
+2. Добавить кеширование подключений и повторное использование сессий
+3. Протестировать подключение с различными сценариями аутентификации
+4. Реализовать graceful handling потери соединения
+
+### Этап 3: Управление конфигурациями
+1. Реализовать ConfigManager с валидацией YAML
+2. Создать интерфейс для создания конфигураций с автодополнением
+3. Добавить сохранение/загрузку конфигураций с versioning
+4. Реализовать проверку корректности конфигураций
+
+### Этап 4: Управление пользователями
+1. Реализовать UserManager с пакетными операциями
+2. Добавить создание пользователей и пулов с правами доступа
+3. Реализовать удаление ресурсов с cascading cleanup
+4. Добавить аудит действий пользователей
+
+### Этап 5: Развертывание виртуальных машин
+1. Реализовать базовый VMDeployer с очередями задач
+2. Добавить клонирование виртуальных машин с прогресс-трекингом
+3. Настроить сетевые интерфейсы с пакетной обработкой
+4. Реализовать rollback механизм при ошибках
+
+### Этап 6: Балансировка нагрузки
+1. Реализовать DeploymentDistributor с многофакторным анализом
+2. Создать BalancedDeployer с предиктивными алгоритмами
+3. Добавить анализ загруженности нод в реальном времени
+4. Реализовать оптимизацию для минимизации миграций шаблонов
+
+### Этап 7: Управление шаблонами
+1. Реализовать TemplateManager с кешированием метаданных
+2. Добавить миграцию шаблонов между нодами с проверкой сети
+3. Создать локальные шаблоны на лету с fallback стратегиями
+4. Реализовать очистку неиспользуемых шаблонов
+
+### Этап 8: Пользовательский интерфейс
+1. Создать интерактивное меню с автодополнением
+2. Добавить навигацию между опциями с историей
+3. Обработать пользовательский ввод с валидацией
+4. Реализовать progress bars для длительных операций
+
+### Этап 9: Оптимизация и производительность
+1. Добавить асинхронную обработку задач
+2. Реализовать кеширование часто используемых данных
+3. Оптимизировать сетевые запросы к Proxmox API
+4. Добавить мониторинг производительности
+
+### Этап 10: Тестирование и отладка
+1. Протестировать каждый компонент отдельно с unit тестами
+2. Проверить интеграцию между компонентами с интеграционными тестами
+3. Обработать краевые случаи и ошибки с comprehensive error handling
+4. Добавить нагрузочное тестирование для проверки производительности
+
+## ДОПОЛНИТЕЛЬНЫЕ ОПТИМИЗАЦИИ
+
+### Вспомогательные функции для оптимизированных алгоритмов:
+
+```python
+def check_node_resources(template_node, target_node):
+    """Проверка ресурсов нод перед миграцией"""
+    # Проверить доступность CPU, памяти, хранилища
+    # Проверить сетевую связанность между нодами
+    # Вернуть True если ресурсы достаточны
+
+def check_template_cache(cache_key, vmid):
+    """Проверка кеша локальных шаблонов"""
+    # Проверить существует ли шаблон в кеше
+    # Проверить актуальность кешированной информации
+    # Вернуть True если шаблон доступен
+
+def check_migration_path(source_node, target_node):
+    """Проверка возможности миграции между нодами"""
+    # Проверить сетевую связанность
+    # Проверить доступность shared storage
+    # Оценить время миграции
+    # Вернуть True если миграция возможна
+
+def get_node_cpu_usage(node):
+    """Получить использование CPU ноды"""
+    # Запросить метрики CPU через Proxmox API
+    # Рассчитать среднее использование
+    # Вернуть значение 0.0-1.0
+
+def get_node_memory_usage(node):
+    """Получить использование памяти ноды"""
+    # Запросить метрики памяти через Proxmox API
+    # Рассчитать процент использования
+    # Вернуть значение 0.0-1.0
+
+def get_node_storage_available(node):
+    """Получить доступное пространство хранения"""
+    # Запросить информацию о хранилищах
+    # Рассчитать доступное пространство
+    # Вернуть объем в GB
+
+def estimate_network_bandwidth(node):
+    """Оценить пропускную способность сети ноды"""
+    # Проанализировать сетевые интерфейсы
+    # Оценить текущую нагрузку сети
+    # Вернуть оценку пропускной способности
+
+def count_active_templates(node):
+    """Подсчитать активные шаблоны на ноде"""
+    # Получить список шаблонов на ноде
+    # Отфильтровать активные шаблоны
+    # Вернуть количество
+
+def estimate_user_resource_demand(users, config):
+    """Предиктивная оценка потребления ресурсов пользователями"""
+    # Проанализировать конфигурацию для оценки требований
+    # Рассчитать CPU, память, storage на пользователя
+    # Вернуть словарь с требованиями ресурсов
+
+def calculate_user_node_compatibility(user, node, user_demand):
+    """Рассчитать совместимость пользователя с нодой"""
+    # Оценить требования пользователя
+    # Сравнить с возможностями ноды
+    # Вернуть коэффициент совместимости 0.0-1.0
+
+def analyze_template_requirements(distribution, config):
+    """Анализ требований к шаблонам для распределения"""
+    # Определить какие шаблоны нужны каждой группе пользователей
+    # Рассчитать эффективность использования шаблонов
+    # Вернуть анализ требований
+
+def calculate_template_efficiency(node, users, config):
+    """Рассчитать эффективность использования шаблонов на ноде"""
+    # Проанализировать использование шаблонов пользователями
+    # Рассчитать коэффициент эффективности
+    # Вернуть значение 0.0-1.0
+
+def optimize_user_placement(users, current_node, distribution, config):
+    """Оптимизировать размещение пользователей"""
+    # Найти более эффективные ноды для пользователей
+    # Рассчитать стоимость перемещения
+    # Вернуть оптимальное распределение
+```
+
+### Метрики производительности для мониторинга:
+
+```python
+class PerformanceMetrics:
+    def __init__(self):
+        self.metrics = {
+            'deployment_time': [],
+            'template_creation_time': [],
+            'network_setup_time': [],
+            'user_creation_time': [],
+            'api_call_count': 0,
+            'error_count': 0,
+            'cache_hit_rate': 0.0
+        }
+
+    def record_deployment_time(self, start_time, end_time):
+        """Записать время развертывания"""
+        duration = end_time - start_time
+        self.metrics['deployment_time'].append(duration)
+
+    def record_api_call(self):
+        """Подсчитать вызовы API"""
+        self.metrics['api_call_count'] += 1
+
+    def record_error(self):
+        """Подсчитать ошибки"""
+        self.metrics['error_count'] += 1
+
+    def get_average_deployment_time(self):
+        """Получить среднее время развертывания"""
+        if not self.metrics['deployment_time']:
+            return 0
+        return sum(self.metrics['deployment_time']) / len(self.metrics['deployment_time'])
+```
+
+## КЛЮЧЕВЫЕ ОСОБЕННОСТИ ДЛЯ РЕАЛИЗАЦИИ
+
+### 1. Зарезервированные сетевые интерфейсы
+- Интерфейсы в формате `**vmbr100**` используют точное имя bridge
+- Обычные интерфейсы генерируют уникальные имена `vmbr1000+`
+
+### 2. Два типа устройств
+- **linux**: обычные виртуальные машины
+- **ecorouter**: устройства с управляющим портом net0 на vmbr0
+
+### 3. Локальные шаблоны
+- Создаются на каждой ноде для оптимизации производительности
+- Минимизируют сетевой трафик при клонировании
+
+### 4. Балансировка нагрузки
+- Равномерное распределение виртуальных машин между нодами
+- Учет текущей загруженности нод
+- Минимизация количества миграций шаблонов
+
+Этот документ описывает логику работы системы Deploy-Stand и поможет любому программисту понять, что нужно реализовать для создания подобной системы автоматизированного развертывания виртуальных машин.
