@@ -1,38 +1,10 @@
 machines:
-- device_type: linux
-  full_clone: false
-  name: CLI-home
-  networks:
-  - bridge: home
-  template_node: PVE1
-  template_vmid: 101
-- device_type: ecorouter
-  full_clone: false
-  name: EcoRouter
-  networks:
-  - bridge: vmbr0
-  - bridge: home
-  - bridge: office
-  template_node: PVE1
-  template_vmid: 103
-- device_type: linux
-  full_clone: false
-  name: srv1
-  networks:
-  - bridge: office
-  template_node: PVE1
-  template_vmid: 100
-- device_type: linux
-  full_clone: false
-  name: srv2
-  networks:
-  - bridge: office
-  template_node: PVE1
-  template_vmid: 100
-- device_type: linux
-  full_clone: false
-  name: CLI-office
-  networks:
-  - bridge: office
-  template_node: PVE1
-  template_vmid: 101
+  - device_type: "linux"           # Тип: linux или ecorouter
+    name: "student-pc"             # Имя создаваемой машины
+    template_node: "pve1"          # Нода где находится шаблон
+    template_vmid: 100             # VMID шаблона-источника
+    networks:
+      - bridge: "vmbr0"            # Интернет
+      - bridge: "lab-net"          # Локальная сеть
+      - bridge: "**vmbr100**"      # Зарезервированный интерфейс
+    full_clone: false              # false = linked clone, true = full clone
