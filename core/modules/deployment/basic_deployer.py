@@ -64,6 +64,25 @@ class BasicDeployer(DeploymentInterface):
                 user_result = self._deploy_for_user(user, config, selected_node)
                 results.update(user_result)
 
+            # Перезагрузить сетевые конфигурации на задействованных нодах после развертывания
+            affected_nodes = set()
+            for user in users:
+                pool_name = user.split('@')[0]
+                # Для каждого пользователя определить на какую ноду развернули
+                # В базовом случае все развернуты на selected_node
+                affected_nodes.add(selected_node)
+
+            if affected_nodes:
+                print("🔄 Обновление сетевых конфигураций на задействованных нодах...")
+                for node in affected_nodes:
+                    try:
+                        if self.proxmox.reload_node_network(node):
+                            print(f"  ✅ Сеть ноды {node} обновлена")
+                        else:
+                            print(f"  ⚠️ Не удалось обновить сеть ноды {node}")
+                    except Exception as e:
+                        print(f"  ❌ Ошибка обновления сети ноды {node}: {e}")
+
             logger.info(f"Развертывание завершено для {len(results)} пользователей")
             return results
 
@@ -276,9 +295,9 @@ class BasicDeployer(DeploymentInterface):
             logger.error(f"Ошибка настройки сети VM {vmid}: {e}")
             raise
 
-    def _generate_password(self, length: int = 12) -> str:
-        """Сгенерировать случайный пароль"""
-        alphabet = string.ascii_letters + string.digits + "!@#$%^&*"
+    def _generate_password(self, length: int = 8) -> str:
+        """Сгенерировать случайный пароль для обучающих стендов"""
+        alphabet = string.digits  # Только цифры для простоты использования в обучении
         return ''.join(secrets.choice(alphabet) for _ in range(length))
 
     def _generate_mac_address(self) -> str:

@@ -361,8 +361,8 @@ class AdvancedDeployer(DeploymentInterface):
             logger.error(f"Ошибка настройки сети VM {vmid}: {e}")
             raise
 
-    def _generate_password(self, length: int = 12) -> str:
-        """Сгенерировать случайный пароль"""
+    def _generate_password(self, length: int = 8) -> str:
+        """Сгенерировать случайный пароль для обучающих стендов"""
         import secrets
         import string
         alphabet = string.ascii_letters + string.digits + "!@#$%^&*"

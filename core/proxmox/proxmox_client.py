@@ -603,3 +603,21 @@ class ProxmoxClient:
         except Exception as e:
             logger.error(f"Ошибка проверки сетевой конфигурации VM {vmid}: {e}")
             return False
+
+    def reload_node_network(self, node: str) -> bool:
+        """
+        Перезагрузить конфигурацию сети ноды (PUT /nodes/{node}/network)
+
+        Args:
+            node: Имя ноды
+
+        Returns:
+            True если перезагрузка успешна
+        """
+        try:
+            self.api.nodes(node).network.put()
+            logger.info(f"Конфигурация сети ноды {node} обновлена")
+            return True
+        except Exception as e:
+            logger.error(f"Ошибка обновления конфигурации сети ноды {node}: {e}")
+            return False

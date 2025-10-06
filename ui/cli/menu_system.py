@@ -43,12 +43,18 @@ class MainMenu:
 
     def show(self):
         """Показать главное меню с оптимизированной навигацией"""
+        # ПЕРВЫМ ДЕЛОМ - НАСТРОЙКА ПОДКЛЮЧЕНИЯ
+        if not self._ensure_proxmox_connection():
+            print("❌ Невозможно продолжить без подключения к Proxmox")
+            return
+
         # Быстрый доступ к часто используемым функциям
         quick_actions = {
             'd': '4',  # d = deploy (развернуть)
             'c': '1',  # c = create config (создать конфигурацию)
             'u': '3',  # u = users (пользователи)
             'x': '5',  # x = cleanup (очистка)
+            's': '7',  # s = settings (настройки подключения)
         }
 
         while True:
@@ -56,8 +62,13 @@ class MainMenu:
                 # Очистка экрана перед показом меню
                 os.system('clear')
 
+                # Показать текущее подключение
+                current_connection = self._get_current_connection_info()
+
                 # Оптимизированное отображение меню с горячими клавишами
                 print("🚀 Deploy-Stand - Главное меню")
+                print("=" * 50)
+                print(f"🔌 Текущее подключение: {current_connection}")
                 print("=" * 50)
                 print("📋 Основные функции:")
                 print("  [1] Создать конфигурацию развертывания")
@@ -69,7 +80,7 @@ class MainMenu:
                 print("  [7] ⚙️  Управление подключением")
                 print("  [0] Выход")
                 print("\n⚡ Быстрые команды:")
-                print("  d = Развернуть | c = Создать конфиг | u = Пользователи | x = Очистка")
+                print("  d = Развернуть | c = Создать конфиг | u = Пользователи | x = Очистка | s = Настройки")
 
                 # Оптимизированный ввод с поддержкой быстрых команд
                 choice = input("\nВыберите действие: ").strip().lower()
@@ -315,6 +326,43 @@ class MainMenu:
             print("❌ Ошибка загрузки конфигурации!")
             return "repeat"
 
+        # Выбор списка пользователей для развертывания
+        user_lists = self.config_manager.list_user_lists()
+        selected_users = []
+
+        if not user_lists:
+            print("❌ Нет доступных списков пользователей!")
+            print("💡 Создайте список пользователей в меню 3")
+            return "repeat"
+
+        print("\n👥 Выбор пользователей для развертывания:")
+        print("Доступные списки пользователей:")
+        for i, list_name in enumerate(user_lists, 1):
+            users = self.config_manager.load_users(list_name)
+            print(f"  [{i}] {list_name} ({len(users)} пользователей)")
+
+        try:
+            user_choice = input(f"Выберите список пользователей (1-{len(user_lists)}) [1]: ").strip()
+            if not user_choice:
+                user_choice = "1"
+
+            list_index = int(user_choice) - 1
+            if 0 <= list_index < len(user_lists):
+                selected_list = user_lists[list_index]
+                selected_users = self.config_manager.load_users(selected_list)
+
+                if not selected_users:
+                    print(f"❌ Список '{selected_list}' пуст!")
+                    return "repeat"
+
+                print(f"👤 Выбран список: {selected_list} ({len(selected_users)} пользователей)")
+            else:
+                print(f"❌ Выберите номер от 1 до {len(user_lists)}")
+                return "repeat"
+        except ValueError:
+            print("❌ Введите корректный номер")
+            return "repeat"
+
         # Оптимизированные стратегии развертывания с соответствующими модулями
         print("\nСтратегии развертывания:")
         print("  [1] 🚀 Локальное - развертывание на ноде с шаблонами")
@@ -422,7 +470,7 @@ class MainMenu:
                 )
 
             results = deployment_module.deploy_configuration(
-                self.config_manager.load_users(),
+                selected_users,
                 config,
                 node_selection,
                 target_node
@@ -449,47 +497,36 @@ class MainMenu:
         return "repeat"
 
     def _manage_users_menu(self):
-        """Оптимизированное управление пользователями"""
+        """Оптимизированное управление пользователями с поддержкой нескольких списков"""
         print("\n👥 Управление пользователями")
         print("=" * 50)
 
-        print("Быстрые действия:")
-        print("  [1] Ввести пользователей вручную")
-        print("  [2] Загрузить из файла")
-        print("  [3] Показать текущий список")
-        print("  [4] Очистить список")
+        # Показать доступные списки пользователей
+        user_lists = self.config_manager.list_user_lists()
+        if user_lists:
+            print(f"Доступные списки пользователей ({len(user_lists)}):")
+            for i, list_name in enumerate(user_lists, 1):
+                users = self.config_manager.load_users(list_name)
+                print(f"  [{i}] {list_name} ({len(users)} пользователей)")
+            print(f"  [{len(user_lists) + 1}] Создать новый список")
+        else:
+            print("Списки пользователей не найдены")
+            print("  [1] Создать новый список")
+
+        print("\nБыстрые действия:")
+        print("  [1] Создать/выбрать список пользователей")
+        print("  [2] Показать все списки")
+        print("  [3] Удалить список")
         print("  [0] Назад")
 
         choice = input("Выберите действие: ").strip()
 
         if choice == "1":
-            users_input = input("Введите пользователей через запятую (user1@pve,user2@pve): ")
-            users = [user.strip() for user in users_input.split(',') if user.strip()]
-            if self.config_manager.save_users(users):
-                print(f"✅ Сохранено {len(users)} пользователей")
-            else:
-                print("❌ Ошибка сохранения")
+            self._manage_user_lists_menu()
         elif choice == "2":
-            file_path = input("Путь к файлу со списком пользователей: ").strip()
-            if self._load_users_from_file(file_path):
-                print("✅ Пользователи загружены из файла")
-            else:
-                print("❌ Ошибка загрузки файла")
+            self._show_all_user_lists()
         elif choice == "3":
-            users = self.config_manager.load_users()
-            if users:
-                print(f"\nТекущий список пользователей ({len(users)}):")
-                for i, user in enumerate(users, 1):
-                    print(f"  {i}. {user}")
-            else:
-                print("❌ Список пользователей пуст")
-        elif choice == "4":
-            confirm = input("Очистить список пользователей? (y/n): ")
-            if confirm.lower() == 'y':
-                if self.config_manager.save_users([]):
-                    print("✅ Список пользователей очищен")
-                else:
-                    print("❌ Ошибка очистки")
+            self._delete_user_list_interactive()
         elif choice == "0":
             return "repeat"
         else:
@@ -499,61 +536,88 @@ class MainMenu:
         return "repeat"
 
     def _delete_all_users_resources(self):
-        """Оптимизированная пакетная очистка с подтверждением"""
-        users = self.config_manager.load_users()
+        """Оптимизированная пакетная очистка с выбором списка пользователей"""
+        # Выбрать список пользователей для удаления
+        user_lists = self.config_manager.list_user_lists()
 
-        if not users:
-            print("❌ Список пользователей пуст!")
+        if not user_lists:
+            print("❌ Нет доступных списков пользователей!")
             return "repeat"
 
-        print(f"\n🗑️  Пакетное удаление ресурсов")
+        print("🗑️  Пакетное удаление ресурсов")
         print("=" * 50)
-        print(f"Найдено пользователей: {len(users)}")
-        print("Будут удалены:")
-        print("  • Все виртуальные машины пользователей")
-        print("  • Пулы пользователей")
-        print("  • Учетные записи пользователей")
-        print("  • Неиспользуемые сетевые bridge'ы")
+        print("Доступные списки пользователей:")
+        for i, list_name in enumerate(user_lists, 1):
+            users = self.config_manager.load_users(list_name)
+            print(f"  [{i}] {list_name} ({len(users)} пользователей)")
 
-        # Безопасное подтверждение
-        confirm = input("\nВы уверены? Введите 'DELETE_ALL' для подтверждения: ").strip()
+        try:
+            choice = input(f"Выберите список для удаления (1-{len(user_lists)}) [1]: ").strip()
+            if not choice:
+                choice = "1"
 
-        if confirm == "DELETE_ALL":
-            # ПРОВЕРКА ПОДКЛЮЧЕНИЯ ПЕРЕД ЗАПУСКОМ УДАЛЕНИЯ
-            if not hasattr(self, 'proxmox_manager') or self.proxmox_manager is None:
-                print("❌ Нет подключения к Proxmox! Подключитесь сначала в меню 7.")
-                return "repeat"
+            list_index = int(choice) - 1
+            if 0 <= list_index < len(user_lists):
+                selected_list = user_lists[list_index]
+                users = self.config_manager.load_users(selected_list)
 
-            # Проверка работоспособности подключения
-            try:
-                nodes = self.proxmox_manager.get_nodes()
-                if not nodes:
-                    print("❌ Подключение к Proxmox не работает!")
+                if not users:
+                    print(f"❌ Список '{selected_list}' пуст!")
                     return "repeat"
-                print(f"✅ Подключение активно: {len(nodes)} нод доступно")
-            except Exception as e:
-                print(f"❌ Ошибка подключения к Proxmox: {e}")
-                return "repeat"
 
-            # Инициализируем user_manager если нужно
-            if not hasattr(self, 'user_manager') or self.user_manager is None:
-                from core.users.user_manager import UserManager
-                self.user_manager = UserManager(self.proxmox_manager)
+                print(f"\n📋 Список '{selected_list}' ({len(users)} пользователей):")
+                for i, user in enumerate(users, 1):
+                    print(f"  {i}. {user}")
 
-            print("🗑️  Начинаем удаление...")
-            results = self.user_manager.delete_user_resources_batch(users)
+                print("\nБудут удалены:")
+                print("  • Все виртуальные машины пользователей")
+                print("  • Пулы пользователей")
+                print("  • Учетные записи пользователей")
+                print("  • Неиспользуемые сетевые bridge'ы")
 
-            print("\n📊 Результаты удаления:")
-            print(f"  ✅ Успешно: {len(results['successful'])}")
-            print(f"  ❌ Ошибок: {len(results['failed'])}")
-            print(f"  ⏭️  Пропущено: {len(results['skipped'])}")
+                # Безопасное подтверждение
+                confirm = input(f"\nВы уверены? Введите 'DELETE_{selected_list.upper()}' для подтверждения: ").strip()
 
-            if results['failed']:
-                print(f"\n❌ Не удалось удалить: {', '.join(results['failed'])}")
-            else:
-                print("🎉 Все ресурсы успешно удалены!")
-        else:
-            print("❌ Операция отменена")
+                if confirm == f"DELETE_{selected_list.upper()}":
+                    # ПРОВЕРКА ПОДКЛЮЧЕНИЯ ПЕРЕД ЗАПУСКОМ УДАЛЕНИЯ
+                    if not hasattr(self, 'proxmox_manager') or self.proxmox_manager is None:
+                        print("❌ Нет подключения к Proxmox! Подключитесь сначала в меню 7.")
+                        return "repeat"
+
+                    # Проверка работоспособности подключения
+                    try:
+                        nodes = self.proxmox_manager.get_nodes()
+                        if not nodes:
+                            print("❌ Подключение к Proxmox не работает!")
+                            return "repeat"
+                        print(f"✅ Подключение активно: {len(nodes)} нод доступно")
+                    except Exception as e:
+                        print(f"❌ Ошибка подключения к Proxmox: {e}")
+                        return "repeat"
+
+                    # Инициализируем user_manager если нужно
+                    if not hasattr(self, 'user_manager') or self.user_manager is None:
+                        from core.users.user_manager import UserManager
+                        self.user_manager = UserManager(self.proxmox_manager)
+
+                    print("🗑️  Начинаем удаление...")
+                    results = self.user_manager.delete_user_resources_batch(users)
+
+                    print("\n📊 Результаты удаления:")
+                    print(f"  ✅ Успешно: {len(results['successful'])}")
+                    print(f"  ❌ Ошибок: {len(results['failed'])}")
+                    print(f"  ⏭️  Пропущено: {len(results['skipped'])}")
+
+                    if results['failed']:
+                        print(f"\n❌ Не удалось удалить: {', '.join(results['failed'])}")
+                    else:
+                        print("🎉 Все ресурсы успешно удалены!")
+                else:
+                    print("❌ Операция отменена")
+        except ValueError:
+            print("❌ Введите корректный номер")
+        except Exception as e:
+            print(f"❌ Ошибка при удалении ресурсов: {e}")
 
         input("\nНажмите Enter для продолжения...")
         return "repeat"
@@ -976,6 +1040,86 @@ class MainMenu:
             except ValueError:
                 print("❌ Введите корректный номер")
 
+    def _ensure_proxmox_connection(self) -> bool:
+        """Обеспечить наличие подключения к Proxmox в начале работы"""
+        if hasattr(self, 'proxmox_manager') and self.proxmox_manager is not None:
+            # Проверить, что подключение еще активно
+            try:
+                nodes = self.proxmox_manager.get_nodes()
+                if nodes:
+                    return True
+            except:
+                pass
+
+        # Подключение отсутствует или неактивно - нужно создать новое
+        print("🔌 Требуется подключение к Proxmox кластеру")
+        print("=" * 50)
+
+        # Загрузить сохраненные конфигурации подключения
+        connections = self.config_manager.load_connections_config()
+
+        if connections:
+            print("Доступные сохраненные подключения:")
+            for i, (name, config) in enumerate(connections.items(), 1):
+                print(f"  [{i}] {name} - {config.get('host', 'не указан')}")
+            print(f"  [{len(connections) + 1}] Создать новое подключение")
+
+            try:
+                choice = input(f"Выберите подключение (1-{len(connections) + 1}) [1]: ").strip()
+                if not choice:
+                    choice = "1"
+
+                config_index = int(choice) - 1
+
+                if 0 <= config_index < len(connections):
+                    # Использовать сохраненное подключение
+                    config_names = list(connections.keys())
+                    selected_config = connections[config_names[config_index]]
+                    connection_name = config_names[config_index]
+
+                    try:
+                        from core.proxmox.proxmox_client import ProxmoxClient
+
+                        self.proxmox_manager = ProxmoxClient(
+                            host=selected_config['host'],
+                            user=selected_config['user'],
+                            password=None if selected_config.get('use_token') else selected_config.get('password'),
+                            token_name=selected_config.get('token_name') if selected_config.get('use_token') else None,
+                            token_value=selected_config.get('token_value') if selected_config.get('use_token') else None
+                        )
+
+                        # Проверить подключение
+                        nodes = self.proxmox_manager.get_nodes()
+                        print(f"✅ Подключение '{connection_name}' установлено!")
+                        print(f"   Доступные ноды: {', '.join(nodes)}")
+                        return True
+
+                    except Exception as e:
+                        print(f"❌ Ошибка подключения '{connection_name}': {e}")
+                        print("Попробуйте создать новое подключение")
+                        return self._create_new_connection()
+                else:
+                    # Создать новое подключение
+                    return self._create_new_connection()
+            except ValueError:
+                print("❌ Неверный выбор!")
+                return self._create_new_connection()
+        else:
+            print("Сохраненные подключения не найдены")
+            return self._create_new_connection()
+
+    def _get_current_connection_info(self) -> str:
+        """Получить информацию о текущем подключении"""
+        if hasattr(self, 'proxmox_manager') and self.proxmox_manager is not None:
+            try:
+                nodes = self.proxmox_manager.get_nodes()
+                if nodes:
+                    return f"{self.proxmox_manager.host} ({len(nodes)} нод)"
+            except:
+                return "❌ Ошибка подключения"
+
+        return "❌ Не подключен"
+
     def _copy_config_interactive(self, configs):
         """Интерактивное копирование конфигурации"""
         try:
@@ -1008,17 +1152,26 @@ class MainMenu:
             return False
 
     def _create_machine_interactive(self) -> Dict[str, Any]:
-        """Интерактивное создание машины"""
+        """Интерактивное создание машины с улучшенным интерфейсом"""
         print("\n🖥️  Создание виртуальной машины")
 
-        # Тип устройства
+        # Тип устройства - выбор из списка
+        print("Тип устройства:")
+        print("  [1] Linux (стандартная VM)")
+        print("  [2] EcoRouter (маршрутизатор)")
         while True:
-            device_type = input("Тип устройства (linux/ecorouter) [linux]: ").strip().lower()
-            if not device_type:
+            device_choice = input("Выберите тип устройства [1]: ").strip()
+            if not device_choice:
+                device_choice = "1"
+
+            if device_choice == "1":
                 device_type = "linux"
-            if device_type in ["linux", "ecorouter"]:
                 break
-            print("❌ Тип должен быть 'linux' или 'ecorouter'")
+            elif device_choice == "2":
+                device_type = "ecorouter"
+                break
+            else:
+                print("❌ Выберите 1 или 2")
 
         # Имя машины
         while True:
@@ -1135,15 +1288,23 @@ class MainMenu:
             print("⚠️  Добавлен стандартный интерфейс vmbr0")
             networks.append({"bridge": "vmbr0"})
 
-        # Тип клонирования
+        # Тип клонирования - выбор из списка
+        print("Тип клонирования:")
+        print("  [1] Связанное (linked clone) - быстрое, экономит место")
+        print("  [2] Полное (full clone) - медленное, независимая копия")
         while True:
-            clone_type = input("Тип клонирования (linked/full) [linked]: ").strip().lower()
-            if not clone_type:
-                clone_type = "linked"
-            if clone_type in ["linked", "full"]:
-                full_clone = (clone_type == "full")
+            clone_choice = input("Выберите тип клонирования [1]: ").strip()
+            if not clone_choice:
+                clone_choice = "1"
+
+            if clone_choice == "1":
+                full_clone = False
                 break
-            print("❌ Тип должен быть 'linked' или 'full'")
+            elif clone_choice == "2":
+                full_clone = True
+                break
+            else:
+                print("❌ Выберите 1 или 2")
 
         machine = {
             "device_type": device_type,
@@ -1179,3 +1340,256 @@ class MainMenu:
             print()
 
         print("-" * 80)
+
+    def _manage_user_lists_menu(self):
+        """Управление списками пользователей"""
+        print("\n📋 Управление списками пользователей")
+        print("=" * 50)
+
+        user_lists = self.config_manager.list_user_lists()
+
+        if user_lists:
+            print("Доступные списки пользователей:")
+            for i, list_name in enumerate(user_lists, 1):
+                users = self.config_manager.load_users(list_name)
+                print(f"  [{i}] {list_name} ({len(users)} пользователей)")
+            print(f"  [{len(user_lists) + 1}] Создать новый список")
+        else:
+            print("Списки пользователей не найдены")
+            print("  [1] Создать новый список")
+
+        try:
+            choice = input("Выберите список или 'c' для создания нового: ").strip().lower()
+
+            if choice == 'c' or (user_lists and choice == str(len(user_lists) + 1)):
+                # Создать новый список
+                return self._create_user_list_interactive()
+            else:
+                # Выбрать существующий список
+                try:
+                    list_index = int(choice) - 1
+                    if 0 <= list_index < len(user_lists):
+                        selected_list = user_lists[list_index]
+                        return self._edit_user_list_interactive(selected_list)
+                    else:
+                        print("❌ Неверный выбор!")
+                        return "repeat"
+                except ValueError:
+                    print("❌ Введите номер или 'c' для создания нового")
+                    return "repeat"
+        except KeyboardInterrupt:
+            return "repeat"
+
+    def _create_user_list_interactive(self):
+        """Создать новый список пользователей"""
+        print("\n👥 Создание нового списка пользователей")
+        print("=" * 50)
+
+        list_name = input("Введите имя списка пользователей: ").strip()
+        if not list_name:
+            print("❌ Имя списка не может быть пустым!")
+            return "repeat"
+
+        # Проверить, существует ли уже список с таким именем
+        if list_name in self.config_manager.list_user_lists():
+            print(f"❌ Список '{list_name}' уже существует!")
+            return "repeat"
+
+        print("Выберите способ создания списка:")
+        print("  [1] Ввести пользователей вручную")
+        print("  [2] Загрузить из файла")
+        print("  [0] Отмена")
+
+        choice = input("Выберите способ: ").strip()
+
+        if choice == "1":
+            users_input = input("Введите пользователей через запятую (user1@pve,user2@pve): ")
+            users = [user.strip() for user in users_input.split(',') if user.strip()]
+
+            if self.config_manager.save_users(users, list_name):
+                print(f"✅ Список '{list_name}' создан с {len(users)} пользователями")
+            else:
+                print("❌ Ошибка сохранения списка")
+        elif choice == "2":
+            file_path = input("Путь к файлу со списком пользователей: ").strip()
+            if self._load_users_from_file(file_path, list_name):
+                print(f"✅ Список '{list_name}' создан из файла")
+            else:
+                print("❌ Ошибка загрузки файла")
+        else:
+            print("❌ Создание отменено")
+
+        return "repeat"
+
+    def _edit_user_list_interactive(self, list_name: str):
+        """Редактировать существующий список пользователей"""
+        print(f"\n📝 Редактирование списка '{list_name}'")
+        print("=" * 50)
+
+        users = self.config_manager.load_users(list_name)
+        print(f"Текущий список ({len(users)} пользователей):")
+        for i, user in enumerate(users, 1):
+            print(f"  {i}. {user}")
+
+        print("\nДоступные действия:")
+        print("  [1] Добавить пользователей")
+        print("  [2] Удалить пользователей")
+        print("  [3] Показать список")
+        print("  [4] Очистить список")
+        print("  [0] Назад")
+
+        choice = input("Выберите действие: ").strip()
+
+        if choice == "1":
+            # Добавить пользователей
+            users_input = input("Введите пользователей для добавления (через запятую): ")
+            new_users = [user.strip() for user in users_input.split(',') if user.strip()]
+            users.extend(new_users)
+
+            if self.config_manager.save_users(users, list_name):
+                print(f"✅ Добавлено {len(new_users)} пользователей")
+            else:
+                print("❌ Ошибка сохранения")
+        elif choice == "2":
+            # Удалить пользователей
+            if users:
+                print("Выберите пользователей для удаления:")
+                for i, user in enumerate(users, 1):
+                    print(f"  [{i}] {user}")
+
+                try:
+                    indices_input = input("Введите номера пользователей для удаления (через запятую): ")
+                    indices_to_remove = [int(idx.strip()) - 1 for idx in indices_input.split(',') if idx.strip().isdigit()]
+
+                    removed_count = 0
+                    for idx in sorted(indices_to_remove, reverse=True):
+                        if 0 <= idx < len(users):
+                            removed_user = users.pop(idx)
+                            removed_count += 1
+                            print(f"✅ Удален пользователь: {removed_user}")
+
+                    if removed_count > 0:
+                        if self.config_manager.save_users(users, list_name):
+                            print(f"✅ Удалено {removed_count} пользователей")
+                        else:
+                            print("❌ Ошибка сохранения")
+                    else:
+                        print("❌ Неверные номера пользователей")
+                except ValueError:
+                    print("❌ Введите корректные номера")
+            else:
+                print("❌ Список пуст")
+        elif choice == "3":
+            # Показать список
+            if users:
+                print(f"\nСписок пользователей '{list_name}':")
+                for i, user in enumerate(users, 1):
+                    print(f"  {i}. {user}")
+            else:
+                print("❌ Список пуст")
+        elif choice == "4":
+            # Очистить список
+            confirm = input("Очистить список пользователей? (y/n): ")
+            if confirm.lower() == 'y':
+                if self.config_manager.save_users([], list_name):
+                    print("✅ Список пользователей очищен")
+                else:
+                    print("❌ Ошибка очистки")
+        else:
+            print("❌ Неверный выбор!")
+
+        return "repeat"
+
+    def _show_all_user_lists(self):
+        """Показать все списки пользователей"""
+        print("\n📋 Все списки пользователей")
+        print("=" * 50)
+
+        user_lists = self.config_manager.list_user_lists()
+
+        if not user_lists:
+            print("❌ Списки пользователей не найдены")
+            return "repeat"
+
+        for list_name in user_lists:
+            users = self.config_manager.load_users(list_name)
+            print(f"\n📝 {list_name} ({len(users)} пользователей):")
+            if users:
+                for i, user in enumerate(users, 1):
+                    print(f"  {i}. {user}")
+            else:
+                print("  (пустой список)")
+
+        return "repeat"
+
+    def _delete_user_list_interactive(self):
+        """Удалить список пользователей"""
+        print("\n🗑️  Удаление списка пользователей")
+        print("=" * 50)
+
+        user_lists = self.config_manager.list_user_lists()
+
+        if not user_lists:
+            print("❌ Нет списков пользователей для удаления")
+            return "repeat"
+
+        print("Доступные списки:")
+        for i, list_name in enumerate(user_lists, 1):
+            users = self.config_manager.load_users(list_name)
+            print(f"  [{i}] {list_name} ({len(users)} пользователей)")
+
+        try:
+            choice = input(f"Выберите список для удаления (1-{len(user_lists)}): ").strip()
+            list_index = int(choice) - 1
+
+            if 0 <= list_index < len(user_lists):
+                selected_list = user_lists[list_index]
+                users = self.config_manager.load_users(selected_list)
+
+                confirm = input(f"Удалить список '{selected_list}' ({len(users)} пользователей)? (y/n): ")
+                if confirm.lower() == 'y':
+                    if self.config_manager.delete_user_list(selected_list):
+                        print(f"✅ Список '{selected_list}' удален")
+                    else:
+                        print("❌ Ошибка удаления списка")
+                else:
+                    print("❌ Удаление отменено")
+            else:
+                print(f"❌ Выберите номер от 1 до {len(user_lists)}")
+        except ValueError:
+            print("❌ Введите корректный номер")
+
+        return "repeat"
+
+    def _load_users_from_file(self, file_path: str, list_name: str = "default"):
+        """Загрузить пользователей из файла в указанный список"""
+        try:
+            import os
+            if not os.path.exists(file_path):
+                print(f"❌ Файл '{file_path}' не найден")
+                return False
+
+            users = []
+            with open(file_path, 'r', encoding='utf-8') as f:
+                for line_num, line in enumerate(f, 1):
+                    user = line.strip()
+                    if user and not user.startswith('#'):  # Игнорировать пустые строки и комментарии
+                        # Автоматически добавить @pve к имени пользователя
+                        if '@' not in user:
+                            user += '@pve'
+                        users.append(user)
+
+            if users:
+                if self.config_manager.save_users(users, list_name):
+                    print(f"✅ Загружено {len(users)} пользователей из файла в список '{list_name}'")
+                    return True
+                else:
+                    print("❌ Ошибка сохранения пользователей")
+                    return False
+            else:
+                print("❌ В файле не найдено пользователей")
+                return False
+
+        except Exception as e:
+            print(f"❌ Ошибка загрузки файла: {e}")
+            return False

@@ -76,6 +76,23 @@ class SmartDeployer(BasicDeployer):
             for node_result in deployment_results.values():
                 results.update(node_result)
 
+            # Перезагрузить сетевые конфигурации на задействованных нодах после развертывания
+            affected_nodes = set()
+            for node, users in distribution.items():
+                if users:  # Только если на ноде были пользователи
+                    affected_nodes.add(node)
+
+            if affected_nodes:
+                print("🔄 Обновление сетевых конфигураций на задействованных нодах...")
+                for node in affected_nodes:
+                    try:
+                        if self.proxmox.reload_node_network(node):
+                            print(f"  ✅ Сеть ноды {node} обновлена")
+                        else:
+                            print(f"  ⚠️ Не удалось обновить сеть ноды {node}")
+                    except Exception as e:
+                        print(f"  ❌ Ошибка обновления сети ноды {node}: {e}")
+
             logger.info(f"Умное развертывание завершено для {len(results)} пользователей")
             return results
 
@@ -480,8 +497,8 @@ class SmartDeployer(BasicDeployer):
             logger.error(f"Ошибка настройки сети VM {vmid}: {e}")
             raise
 
-    def _generate_password(self, length: int = 12) -> str:
-        """Сгенерировать случайный пароль"""
+    def _generate_password(self, length: int = 8) -> str:
+        """Сгенерировать случайный пароль для обучающих стендов"""
         alphabet = string.ascii_letters + string.digits + "!@#$%^&*"
         return ''.join(secrets.choice(alphabet) for _ in range(length))
 

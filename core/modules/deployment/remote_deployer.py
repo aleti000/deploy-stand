@@ -401,9 +401,9 @@ class RemoteDeployer(BasicDeployer):
             logger.error(f"Ошибка настройки сети VM {vmid}: {e}")
             raise
 
-    def _generate_password(self, length: int = 12) -> str:
-        """Сгенерировать случайный пароль"""
-        alphabet = string.ascii_letters + string.digits + "!@#$%^&*"
+    def _generate_password(self, length: int = 8) -> str:
+        """Сгенерировать случайный пароль для обучающих стендов"""
+        alphabet = string.digits  # Только цифры для простоты использования в обучении
         return ''.join(secrets.choice(alphabet) for _ in range(length))
 
     def _generate_mac_address(self) -> str:

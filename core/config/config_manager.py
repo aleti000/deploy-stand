@@ -57,30 +57,80 @@ class ConfigManager:
         """
         return self._save_yaml_file(self.CONFIG_FILE, config)
 
-    def load_users(self) -> List[str]:
+    def load_users(self, users_list_name: str = "default") -> List[str]:
         """
         Загрузить список пользователей
+
+        Args:
+            users_list_name: Имя списка пользователей (по умолчанию "default")
 
         Returns:
             Список пользователей
         """
-        config = self._load_yaml_file(self.USERS_FILE)
+        users_file = os.path.join(self.CONFIG_DIR, f"users_{users_list_name}.yml")
+        config = self._load_yaml_file(users_file)
         if config and 'users' in config:
             return config['users']
         return []
 
-    def save_users(self, users: List[str]) -> bool:
+    def save_users(self, users: List[str], users_list_name: str = "default") -> bool:
         """
         Сохранить список пользователей
 
         Args:
             users: Список пользователей для сохранения
+            users_list_name: Имя списка пользователей (по умолчанию "default")
 
         Returns:
             True если сохранение успешно
         """
         config = {'users': users}
-        return self._save_yaml_file(self.USERS_FILE, config)
+        users_file = os.path.join(self.CONFIG_DIR, f"users_{users_list_name}.yml")
+        return self._save_yaml_file(users_file, config)
+
+    def list_user_lists(self) -> List[str]:
+        """
+        Получить список доступных списков пользователей
+
+        Returns:
+            Список имен списков пользователей
+        """
+        try:
+            if not os.path.exists(self.CONFIG_DIR):
+                return []
+
+            user_lists = []
+            for file in os.listdir(self.CONFIG_DIR):
+                if file.startswith('users_') and file.endswith('.yml'):
+                    list_name = file[6:-4]  # Remove 'users_' prefix and '.yml' suffix
+                    user_lists.append(list_name)
+            return user_lists
+        except Exception as e:
+            logger.error(f"Ошибка получения списка пользователей: {e}")
+            return []
+
+    def delete_user_list(self, users_list_name: str) -> bool:
+        """
+        Удалить список пользователей
+
+        Args:
+            users_list_name: Имя списка пользователей для удаления
+
+        Returns:
+            True если удаление успешно
+        """
+        try:
+            users_file = os.path.join(self.CONFIG_DIR, f"users_{users_list_name}.yml")
+            if os.path.exists(users_file):
+                os.remove(users_file)
+                logger.info(f"Список пользователей {users_list_name} удален")
+                return True
+            else:
+                logger.warning(f"Список пользователей {users_list_name} не найден")
+                return False
+        except Exception as e:
+            logger.error(f"Ошибка удаления списка пользователей {users_list_name}: {e}")
+            return False
 
     def load_connections_config(self) -> Optional[Dict[str, Any]]:
         """

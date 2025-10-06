@@ -1,26 +1,61 @@
+# ============================================================================
+# Deploy-Stand .gitignore
+# ============================================================================
+# This file excludes files that should not be tracked in version control,
+# including sensitive configuration files, logs, caches, and generated files.
+
+# ============================================================================
+# SENSITIVE CONFIGURATION AND DATA FILES
+# ============================================================================
+# These files contain sensitive information like passwords, API keys, user data
+
+# All configuration files in data/connections_config.yml
 data/connections_config.yml
 data/deployment_config.yml
+
+# All user list files (contain user credentials)
+data/users*.yml
 data/users_list.yml
+data/*users*.yml
+
+# Generated template mapping files
+data/mapper_template.yml
+
+# All configuration directories
 data/configs/
 
-*.env
-.env
-.env.local
-.env.*.local
+# Sensitive configuration files anywhere
+secrets.yml
+passwords.yml
+secrets.json
+passwords.json
+credentials.*
+auth.*
+config.local.*
+local.config.*
 
-# Логи и временные файлы
-*.log
-logs/
-tmp/
-temp/
-*.tmp
-*.temp
+# Cryptographic keys and certificates
+*.key
+*.pem
+*.crt
+*.p12
+*.pfx
+*.jks
 
-# Кэш файлы
+# ============================================================================
+# PYTHON SPECIFIC
+# ============================================================================
+
+# Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
 *$py.class
 *.so
+
+# C extensions
+*.so
+
+# Distribution / packaging
 .Python
 build/
 develop-eggs/
@@ -37,33 +72,116 @@ wheels/
 *.egg-info/
 .installed.cfg
 *.egg
+MANIFEST
 
-# Файлы IDE и редакторов
-.vscode/
-.idea/
-*.swp
-*.swo
-*~
-.DS_Store
-Thumbs.db
+# PyInstaller
+*.manifest
+*.spec
 
-# Виртуальные окружения
+# Installer logs
+pip-log.txt
+pip-delete-this-directory.txt
+
+# Unit test / coverage reports
+htmlcov/
+.tox/
+.nox/
+.coverage
+.coverage.*
+.cache
+nosetests.xml
+coverage.xml
+*.cover
+*.py,cover
+.hypothesis/
+.pytest_cache/
+
+# Jekyll (Python)
+docs/_build/
+
+# mypy
+.mypy_cache/
+.dmypy.json
+dmypy.json
+
+# Pyre type checker
+.pyre/
+
+# ============================================================================
+# VIRTUAL ENVIRONMENTS
+# ============================================================================
+# Virtual Python environments (created by virtualenv, venv, pipenv, poetry, etc.)
+
+.venv
 venv/
 env/
 ENV/
-.venv/
-.env/
+.ENV
+env.bak/
+venv.bak/
 
-# Покрытие тестами
-.coverage
-.pytest_cache/
-.tox/
-htmlcov/
+# pipenv
+Pipfile.lock
 
-# Jupyter Notebook
-.ipynb_checkpoints
+# poetry
+poetry.lock
 
-# OS generated files
+# pdm
+.pdm.toml
+.pdm-python
+.pdm-build/
+
+# PEP 582
+__pypackages__/
+
+# ============================================================================
+# IDE AND EDITOR FILES
+# ============================================================================
+
+# VSCode
+.vscode/
+*.code-workspace
+
+# PyCharm / IntelliJ
+.idea/
+*.iml
+*.ipr
+*.iws
+
+# Vim
+*.swp
+*.swo
+*~
+
+# Emacs
+*~
+\#*\#
+/.emacs.desktop
+/.emacs.desktop.lock
+*.elc
+auto-save-list
+tramp
+.\#*
+
+# SublimeText
+*.tmlanguage.cache
+*.tmPreferences.cache
+*.stTheme.cache
+*.sublime-workspace
+*.sublime-project
+
+# Spyder
+.spyderproject
+.spyproject
+
+# Rope
+.ropeproject
+
+# ============================================================================
+# OPERATING SYSTEM FILES
+# ============================================================================
+
+# macOS
 .DS_Store
 .DS_Store?
 ._*
@@ -71,67 +189,102 @@ htmlcov/
 .Trashes
 ehthumbs.db
 Thumbs.db
+.AppleDouble
+.LSOverride
+Icon
 
-# Сетевые файлы
-*.pcap
-*.cap
+# Windows
+Thumbs.db
+Thumbs.db:encryptable
+ehthumbs.db
+ehthumbs_vista.db
+*.stackdump
+[Dd]esktop.ini
+$RECYCLE.BIN/
+*.cab
+*.msi
+*.msix
+*.msm
+*.msp
+*.lnk
 
-# Бэкапы
-*.bak
-*.backup
+# Linux
 *~
+.fuse_hidden*
+.directory
+.Trash-*
+.nfs*
 
-# Локальные конфигурации развертывания
-data/configs/
-deployment_local.yml
-local_config.yml
+# ============================================================================
+# LOGS AND TEMPORARY FILES
+# ============================================================================
 
-# Файлы с паролями и секретами
-secrets.yml
-passwords.yml
-*.key
-*.pem
-*.crt
-
-# Временные файлы мониторинга
-monitoring_data/
-metrics/
-*.metrics
-
-# Файлы отладки
+# Logs
+*.log
+logs/
+tmp/
+temp/
+*.tmp
+*.temp
 debug.log
+log.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Process files
 *.pid
 *.seed
 *.pid.lock
 
-# Покрытие кода
-coverage.xml
-*.cover
-.hypothesis/
+# ============================================================================
+# NETWORK AND MONITORING FILES
+# ============================================================================
 
-# Переводы
-*.mo
-*.pot
+# Network captures
+*.pcap
+*.cap
 
-# Django stuff:
-*.sqlite3
+# Monitoring data
+monitoring_data/
+metrics/
+*.metrics
 
-# Flask stuff:
+# ============================================================================
+# BACKUPS AND ARCHIVES
+# ============================================================================
+
+*.bak
+*.backup
+*.orig
+*.rej
+*.old
+*.tmp.bak
+
+# Archives (typically generated)
+*.tar.gz
+*.tar.bz2
+*.zip
+*.7z
+*.rar
+
+# ============================================================================
+# FRAMEWORK SPECIFIC
+# ============================================================================
+
+# Django
+db.sqlite3
+db.sqlite3-journal
+
+# Flask
 instance/
 .webassets-cache
 
-# Scrapy stuff:
+# Scrapy
 .scrapy
 
-# Sphinx documentation
-docs/_build/
-
-# PyBuilder
-target/
-
 # Jupyter Notebook
-#   kernelspec
-#   ete
+.ipynb_checkpoints
 
 # IPython
 profile_default/
@@ -140,36 +293,104 @@ ipython_config.py
 # pyenv
 .python-version
 
-# celery beat schedule file
-celerybeat-schedule
+# pipenv
+Pipfile.lock
 
-# SageMath parsed files
+# poetry
+poetry.lock
+
+# pdm
+.pdm.toml
+.pdm-python
+.pdm-build/
+
+# PEP 582
+__pypackages__/
+
+# Celery
+celerybeat-schedule
+celerybeat.pid
+
+# SageMath
 *.sage.py
 
-# dotenv
-.env
+# ============================================================================
+# DOCUMENTATION AND BUILD
+# ============================================================================
 
-# virtualenv
-.env
-.venv
-env/
-venv/
-ENV/
-env.bak/
-venv.bak/
+# Sphinx documentation
+docs/_build/
+docs/build/
 
-# Spyder project settings
-.spyderproject
-.spyproject
+# MkDocs documentation
+/site/
 
-# Rope project settings
-.ropeproject
+# LaTeX
+*.aux
+*.lof
+*.log
+*.lot
+*.fls
+*.out
+*.toc
+*.fmt
+*.fot
+*.cb
+*.cb2
+.*.lb
 
-# mkdocs documentation
-/site
+# ============================================================================
+# DEVELOPMENT TOOLS
+# ============================================================================
+
+# Testing
+.coverage
+.pytest_cache/
+.tox/
+.nox/
+.coverage.*
+htmlcov/
 
 # mypy
 .mypy_cache/
+.dmypy.json
+dmypy.json
 
-# Pyre type checker
-.pyre/
+# PyCharm / IntelliJ
+.idea/
+
+# VS Code
+.vscode/
+
+# ============================================================================
+# DEPLOYMENT AND OPERATIONS
+# ============================================================================
+
+# Local deployment configs
+deployment_local.yml
+local_config.yml
+local_deployment.yml
+deploy_local.*
+
+# Docker
+.dockerignore
+
+# Kubernetes
+*.yaml.bak
+k8s-config/
+
+# Deployment scripts (uncomment if you have them)
+# deploy.sh
+# deploy.py
+
+# ============================================================================
+# DATABASE FILES
+# ============================================================================
+
+*.db
+*.sqlite
+*.sqlite3
+*.db-journal
+postgres_data/
+mysql_data/
+redis_data/
