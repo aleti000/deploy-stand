@@ -131,6 +131,17 @@ class LocalDeployer(DeploymentInterface):
             if not self._grant_vm_permissions(user, template_node, new_vmid):
                 logger.warning(f"Не удалось выдать права пользователю {user} на VM {new_vmid}")
 
+            # 🔄 Перезагрузка сетевых подключений после создания VM
+            try:
+                logger.info(f"🔄 Перезагрузка сети на ноде {template_node} после создания VM {new_vmid}")
+                if self.proxmox.reload_node_network(template_node):
+                    logger.info(f"✅ Сеть на ноде {template_node} успешно перезагружена")
+                else:
+                    logger.warning(f"⚠️ Не удалось перезагрузить сеть на ноде {template_node}")
+            except Exception as e:
+                logger.error(f"❌ Ошибка перезагрузки сети на ноде {template_node}: {e}")
+                # Не прерываем выполнение, если перезагрузка сети неудачна
+
             logger.info(f"Машина {name} (VMID: {new_vmid}) создана локально на ноде {template_node}")
 
         except Exception as e:
