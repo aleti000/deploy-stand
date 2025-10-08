@@ -3,6 +3,8 @@
 
 Распределяет виртуальные машины по нодам кластера с учетом текущей нагрузки,
 используя стратегию подготовки шаблонов и интеллектуальную балансировку.
+
+ПОЛНОСТЬЮ НЕЗАВИСИМЫЙ МОДУЛЬ - содержит встроенную интеллектуальную балансировку
 """
 
 import logging
@@ -10,27 +12,23 @@ import secrets
 import string
 import time
 from typing import Dict, List, Any
-from core.modules.deployment.basic_deployer import BasicDeployer
-from core.modules.balancing.smart_balancer import SmartBalancer
-from core.interfaces.balancing_interface import BalancingInterface
+from core.interfaces.deployment_interface import DeploymentInterface
 from core.proxmox.proxmox_client import ProxmoxClient
 
 logger = logging.getLogger(__name__)
 
 
-class SmartDeployer(BasicDeployer):
+class SmartDeployer(DeploymentInterface):
     """Умный развертыватель виртуальных машин с учетом нагрузки"""
 
-    def __init__(self, proxmox_client: ProxmoxClient, balancing_module: BalancingInterface):
+    def __init__(self, proxmox_client: ProxmoxClient):
         """
         Инициализация умного развертывателя
 
         Args:
             proxmox_client: Клиент для работы с Proxmox API
-            balancing_module: Модуль интеллектуальной балансировки с учетом нагрузки
         """
         self.proxmox = proxmox_client
-        self.balancing = balancing_module
 
     def deploy_configuration(self, users: List[str], config: Dict[str, Any],
                            node_selection: str = "smart", target_node: str = None) -> Dict[str, str]:
@@ -60,9 +58,9 @@ class SmartDeployer(BasicDeployer):
 
             logger.info(f"Умная балансировка развертывания по нодам: {', '.join(nodes)}")
 
-            # Использовать умный модуль балансировки для распределения пользователей
+            # Использовать встроенную интеллектуальную балансировку для распределения пользователей
             # с учетом текущей нагрузки на ноды
-            distribution = self.balancing.distribute_deployment(users, nodes, config)
+            distribution = self._distribute_users_smart(users, nodes, config)
 
             logger.info(f"Умное распределение пользователей по нодам: {distribution}")
 
@@ -610,6 +608,60 @@ class SmartDeployer(BasicDeployer):
 
         return True
 
+    def _distribute_users_smart(self, users: List[str], nodes: List[str], config: Dict[str, Any]) -> Dict[str, List[str]]:
+        """
+        Распределить пользователей по нодам с учетом текущей нагрузки
+
+        Встроенная реализация интеллектуальной балансировки
+
+        Args:
+            users: Список пользователей для распределения
+            nodes: Доступные ноды
+            config: Конфигурация развертывания
+
+        Returns:
+            Словарь {нода: [пользователи]}
+        """
+        # Получить текущую нагрузку на ноды
+        node_loads = self._get_node_loads(nodes)
+
+        # Рассчитать доступную емкость для каждой ноды (1.0 - нагрузка)
+        node_capacity = {node: max(0.1, 1.0 - load) for node, load in node_loads.items()}
+
+        # Нормализовать емкость для равномерного распределения весов
+        total_capacity = sum(node_capacity.values())
+        if total_capacity == 0:
+            # Fallback на равномерное распределение если все ноды перегружены
+            node_weights = {node: 1.0 for node in nodes}
+        else:
+            node_weights = {node: capacity / total_capacity for node, capacity in node_capacity.items()}
+
+        # Распределить пользователей с учетом весов нод
+        distribution = {node: [] for node in nodes}
+        users_per_node = {}
+
+        # Рассчитать количество пользователей для каждой ноды
+        remaining_users = len(users)
+        for node in nodes[:-1]:  # Все ноды кроме последней
+            node_users = int(len(users) * node_weights[node])
+            users_per_node[node] = node_users
+            remaining_users -= node_users
+
+        # Последней ноде отдать всех оставшихся пользователей
+        users_per_node[nodes[-1]] = remaining_users
+
+        # Распределить пользователей
+        user_index = 0
+        for node in nodes:
+            for _ in range(users_per_node[node]):
+                if user_index < len(users):
+                    distribution[node].append(users[user_index])
+                    user_index += 1
+
+        logger.info(f"Интеллектуальная балансировка: {len(users)} пользователей распределены по {len(nodes)} нодам")
+        logger.info(f"Веса нод: {node_weights}")
+        return distribution
+
     def get_deployment_status(self, deployment_id: str) -> Dict[str, Any]:
         """
         Получить статус умного развертывания
@@ -624,5 +676,6 @@ class SmartDeployer(BasicDeployer):
             'deployment_id': deployment_id,
             'status': 'completed',
             'strategy': 'smart',
+            'balancer': 'built-in',
             'message': 'Умное развертывание с балансировкой нагрузки завершено'
         }

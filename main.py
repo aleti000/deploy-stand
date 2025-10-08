@@ -48,14 +48,10 @@ def main():
 
         # Импорт и регистрация модулей развертывания
         try:
-            from core.modules.deployment.basic_deployer import BasicDeployer
-            from core.modules.deployment.advanced_deployer import AdvancedDeployer
             from core.modules.deployment.local_deployer import LocalDeployer
             from core.modules.deployment.remote_deployer import RemoteDeployer
             from core.modules.deployment.balanced_deployer import BalancedDeployer
             from core.modules.deployment.smart_deployer import SmartDeployer
-            module_factory.register_deployment_module("basic", BasicDeployer)
-            module_factory.register_deployment_module("advanced", AdvancedDeployer)
             module_factory.register_deployment_module("local", LocalDeployer)
             module_factory.register_deployment_module("remote", RemoteDeployer)
             module_factory.register_deployment_module("balanced", BalancedDeployer)
@@ -64,15 +60,8 @@ def main():
         except ImportError as e:
             logger.warning(f"⚠️ Не удалось зарегистрировать модули развертывания: {e}")
 
-        # Импорт и регистрация модулей балансировки
-        try:
-            from core.modules.balancing.simple_balancer import SimpleBalancer
-            from core.modules.balancing.smart_balancer import SmartBalancer
-            module_factory.register_balancing_module("simple", SimpleBalancer)
-            module_factory.register_balancing_module("smart", SmartBalancer)
-            logger.info("✅ Модули балансировки зарегистрированы")
-        except ImportError as e:
-            logger.warning(f"⚠️ Не удалось зарегистрировать модули балансировки: {e}")
+        # Модули балансировки больше не используются после рефакторинга
+        logger.info("ℹ️ Модули балансировки не требуются (используется встроенная балансировка)")
 
         # Импорт и регистрация модулей шаблонов
         try:

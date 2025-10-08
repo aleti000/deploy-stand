@@ -34,12 +34,8 @@ class ModuleFactory:
             self.register_deployment_module("balanced", BalancedDeployer)
             self.register_deployment_module("smart", SmartDeployer)
 
-            # Регистрация модулей балансировки
-            from .modules.balancing.simple_balancer import SimpleBalancer
-            from .modules.balancing.smart_balancer import SmartBalancer
-
-            self.register_balancing_module("simple", SimpleBalancer)
-            self.register_balancing_module("smart", SmartBalancer)
+            # Модули балансировки больше не используются после рефакторинга
+            # (модули развертывания содержат встроенную балансировку)
 
             # Регистрация сетевых модулей
             from .modules.network.bridge_manager import BridgeManager

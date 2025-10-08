@@ -3,6 +3,8 @@
 
 Реализует развертывание с равномерным распределением стендов пользователей
 по всем доступным нодам с полной независимостью от других модулей.
+
+ПОЛНОСТЬЮ НЕЗАВИСИМЫЙ МОДУЛЬ - содержит встроенную балансировку нагрузки
 """
 
 import logging
@@ -12,32 +14,23 @@ import string
 import time
 import yaml
 from typing import Dict, List, Any, Optional
-from core.modules.deployment.basic_deployer import BasicDeployer
+from core.interfaces.deployment_interface import DeploymentInterface
 from core.proxmox.proxmox_client import ProxmoxClient
-from core.interfaces.balancing_interface import BalancingInterface
 
 logger = logging.getLogger(__name__)
 
 
-class BalancedDeployer(BasicDeployer):
+class BalancedDeployer(DeploymentInterface):
     """Сбалансированный развертыватель виртуальных машин"""
 
-    def __init__(self, proxmox_client: ProxmoxClient, balancing_module: BalancingInterface = None):
+    def __init__(self, proxmox_client: ProxmoxClient):
         """
         Инициализация сбалансированного развертывателя
 
         Args:
             proxmox_client: Клиент для работы с Proxmox API
-            balancing_module: Модуль балансировки нагрузки (по умолчанию SmartBalancer)
         """
-        super().__init__(proxmox_client)
-
-        if balancing_module is None:
-            # Импорт здесь чтобы избежать циклических зависимостей
-            from core.modules.balancing.smart_balancer import SmartBalancer
-            self.balancer = SmartBalancer(proxmox_client)
-        else:
-            self.balancer = balancing_module
+        self.proxmox = proxmox_client
 
     def deploy_configuration(self, users: List[str], config: Dict[str, Any],
                            node_selection: str = "balanced", target_node: str = None) -> Dict[str, str]:
@@ -65,8 +58,8 @@ class BalancedDeployer(BasicDeployer):
 
             logger.info(f"Доступные ноды: {nodes}")
 
-            # Распределить пользователей по нодам с помощью балансировщика
-            distribution = self.balancer.distribute_deployment(users, nodes, config)
+            # Распределить пользователей по нодам с помощью встроенной балансировки
+            distribution = self._distribute_users_balanced(users, nodes, config)
             logger.info(f"Распределение пользователей по нодам: {distribution}")
 
             # Развернуть каждого пользователя на назначенной ноде
@@ -154,12 +147,22 @@ class BalancedDeployer(BasicDeployer):
             True если конфигурация валидна
         """
         try:
-            # Сначала выполнить базовую валидацию
-            if not super().validate_config(config):
+            # Проверка наличия секции machines
+            if 'machines' not in config:
+                logger.error("Конфигурация не содержит секцию 'machines'")
                 return False
 
+            machines = config['machines']
+            if not isinstance(machines, list) or len(machines) == 0:
+                logger.error("Секция 'machines' должна быть непустым списком")
+                return False
+
+            # Валидация каждой машины
+            for i, machine in enumerate(machines):
+                if not self._validate_machine_config(machine, i):
+                    return False
+
             # Дополнительная валидация для сбалансированного режима
-            machines = config.get('machines', [])
             template_nodes = set()
 
             # Собрать все уникальные template_node
@@ -184,6 +187,60 @@ class BalancedDeployer(BasicDeployer):
         except Exception as e:
             logger.error(f"Ошибка валидации конфигурации: {e}")
             return False
+
+    def _validate_machine_config(self, machine: Dict[str, Any], index: int) -> bool:
+        """
+        Валидация конфигурации одной машины
+
+        Args:
+            machine: Конфигурация машины
+            index: Индекс машины в списке
+
+        Returns:
+            True если конфигурация валидна
+        """
+        required_fields = ['template_vmid', 'template_node']
+        optional_fields = ['device_type', 'name', 'networks', 'full_clone']
+
+        # Проверка обязательных полей
+        for field in required_fields:
+            if field not in machine:
+                logger.error(f"Машина {index}: отсутствует обязательное поле '{field}'")
+                return False
+
+        # Проверка типа template_vmid
+        if not isinstance(machine['template_vmid'], int):
+            logger.error(f"Машина {index}: поле 'template_vmid' должно быть числом")
+            return False
+
+        # Проверка допустимых значений
+        if 'device_type' in machine:
+            if machine['device_type'] not in ['linux', 'ecorouter']:
+                logger.error(f"Машина {index}: недопустимый тип устройства '{machine['device_type']}'")
+                return False
+
+        # Проверка типа full_clone
+        if 'full_clone' in machine:
+            if not isinstance(machine['full_clone'], bool):
+                logger.error(f"Машина {index}: поле 'full_clone' должно быть true/false")
+                return False
+
+        # Проверка сетевой конфигурации
+        if 'networks' in machine:
+            if not isinstance(machine['networks'], list):
+                logger.error(f"Машина {index}: поле 'networks' должно быть списком")
+                return False
+
+            for j, network in enumerate(machine['networks']):
+                if not isinstance(network, dict):
+                    logger.error(f"Машина {index}, сеть {j}: должна быть объектом")
+                    return False
+
+                if 'bridge' not in network:
+                    logger.error(f"Машина {index}, сеть {j}: отсутствует поле 'bridge'")
+                    return False
+
+        return True
 
     def _create_machine_local(self, machine_config: Dict[str, Any], pool: str) -> None:
         """
@@ -720,6 +777,40 @@ class BalancedDeployer(BasicDeployer):
         except Exception as e:
             logger.error(f"Ошибка очистки пользователя и пула: {e}")
 
+    def _distribute_users_balanced(self, users: List[str], nodes: List[str], config: Dict[str, Any]) -> Dict[str, List[str]]:
+        """
+        Распределить пользователей по нодам с балансировкой нагрузки
+
+        Встроенная реализация простой балансировки - равномерное распределение
+
+        Args:
+            users: Список пользователей для распределения
+            nodes: Доступные ноды
+            config: Конфигурация развертывания (не используется в простой балансировке)
+
+        Returns:
+            Словарь {нода: [пользователи]}
+        """
+        distribution = {node: [] for node in nodes}
+        users_per_node = len(users) // len(nodes)
+        remainder = len(users) % len(nodes)
+
+        user_index = 0
+
+        # Распределить пользователей равномерно
+        for i, node in enumerate(nodes):
+            # Добавить остаток к первым нодам
+            extra_users = 1 if i < remainder else 0
+            node_users_count = users_per_node + extra_users
+
+            for _ in range(node_users_count):
+                if user_index < len(users):
+                    distribution[node].append(users[user_index])
+                    user_index += 1
+
+        logger.info(f"Балансировка: {len(users)} пользователей распределены по {len(nodes)} нодам")
+        return distribution
+
     def get_deployment_status(self, deployment_id: str) -> Dict[str, Any]:
         """
         Получить статус сбалансированного развертывания
@@ -734,6 +825,6 @@ class BalancedDeployer(BasicDeployer):
             'deployment_id': deployment_id,
             'status': 'completed',
             'strategy': 'balanced',
-            'balancer': self.balancer.__class__.__name__,
+            'balancer': 'built-in',
             'message': 'Сбалансированное развертывание завершено'
         }

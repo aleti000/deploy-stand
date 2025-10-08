@@ -453,21 +453,11 @@ class MainMenu:
 
         try:
             # Создать модуль развертывания соответствующего типа
-            if deployment_module_name in ["balanced", "smart"]:
-                # Эти модули требуют балансировочного модуля
-                balancer_name = "simple" if deployment_module_name == "balanced" else "smart"
-                balancer = self.module_factory.create_balancing_module(balancer_name, proxmox_client=self.proxmox_manager)
-                deployment_module = self.module_factory.create_deployment_module(
-                    deployment_module_name,
-                    proxmox_client=self.proxmox_manager,
-                    balancing_module=balancer
-                )
-            else:
-                # Простые модули
-                deployment_module = self.module_factory.create_deployment_module(
-                    deployment_module_name,
-                    proxmox_client=self.proxmox_manager
-                )
+            # Все модули теперь полностью независимы и содержат встроенную логику балансировки
+            deployment_module = self.module_factory.create_deployment_module(
+                deployment_module_name,
+                proxmox_client=self.proxmox_manager
+            )
 
             results = deployment_module.deploy_configuration(
                 selected_users,

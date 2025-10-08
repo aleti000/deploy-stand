@@ -3,6 +3,8 @@
 
 Реализует развертывание на удаленной ноде с предварительной
 подготовкой шаблона: full clone -> template conversion -> migration -> linked/full clone
+
+ПОЛНОСТЬЮ НЕЗАВИСИМЫЙ МОДУЛЬ - не зависит от других модулей развертывания
 """
 
 import logging
@@ -12,13 +14,13 @@ import string
 import time
 import yaml
 from typing import Dict, List, Any, Optional
-from core.modules.deployment.basic_deployer import BasicDeployer
+from core.interfaces.deployment_interface import DeploymentInterface
 from core.proxmox.proxmox_client import ProxmoxClient
 
 logger = logging.getLogger(__name__)
 
 
-class RemoteDeployer(BasicDeployer):
+class RemoteDeployer(DeploymentInterface):
     """Удаленный развертыватель виртуальных машин"""
 
     def __init__(self, proxmox_client: ProxmoxClient):

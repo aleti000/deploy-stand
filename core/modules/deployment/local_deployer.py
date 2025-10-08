@@ -3,19 +3,21 @@
 
 Развертывает виртуальные машины непосредственно на ноде,
 где хранятся оригинальные шаблоны.
+
+ПОЛНОСТЬЮ НЕЗАВИСИМЫЙ МОДУЛЬ - не зависит от других модулей развертывания
 """
 
 import logging
 import secrets
 import string
 from typing import Dict, List, Any
-from core.modules.deployment.basic_deployer import BasicDeployer
+from core.interfaces.deployment_interface import DeploymentInterface
 from core.proxmox.proxmox_client import ProxmoxClient
 
 logger = logging.getLogger(__name__)
 
 
-class LocalDeployer(BasicDeployer):
+class LocalDeployer(DeploymentInterface):
     """Локальный развертыватель виртуальных машин"""
 
     def __init__(self, proxmox_client: ProxmoxClient):
