@@ -8,8 +8,8 @@
 from typing import Dict, Any, Type, List
 from .interfaces.deployment_interface import DeploymentInterface
 from .interfaces.balancing_interface import BalancingInterface
-from .interfaces.template_interface import TemplateInterface
-from .interfaces.network_interface import NetworkInterface
+
+
 
 
 class ModuleFactory:
@@ -37,15 +37,9 @@ class ModuleFactory:
             # Модули балансировки больше не используются после рефакторинга
             # (модули развертывания содержат встроенную балансировку)
 
-            # Регистрация сетевых модулей
-            from .modules.network.bridge_manager import BridgeManager
 
-            self.register_network_module("default", BridgeManager)
 
-            # Регистрация модулей шаблонов
-            from .modules.templates.local_templates import TemplateManager
 
-            self.register_template_module("local", TemplateManager)
 
         except ImportError as e:
             # В случае ошибок импорта, модули просто не будут зарегистрированы

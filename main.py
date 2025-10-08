@@ -63,23 +63,9 @@ def main():
         # Модули балансировки больше не используются после рефакторинга
         logger.info("ℹ️ Модули балансировки не требуются (используется встроенная балансировка)")
 
-        # Импорт и регистрация модулей шаблонов
-        try:
-            from core.modules.templates.local_templates import LocalTemplateManager
-            from core.modules.templates.migration_templates import MigrationTemplateManager
-            module_factory.register_template_module("local", LocalTemplateManager)
-            module_factory.register_template_module("migration", MigrationTemplateManager)
-            logger.info("✅ Модули шаблонов зарегистрированы")
-        except ImportError as e:
-            logger.warning(f"⚠️ Не удалось зарегистрировать модули шаблонов: {e}")
+        # Модули шаблонов удалены - не требуются для работы системы
 
-        # Импорт и регистрация модулей сети
-        try:
-            from core.modules.network.bridge_manager import BridgeManager
-            module_factory.register_network_module("bridge", BridgeManager)
-            logger.info("✅ Модули сети зарегистрированы")
-        except ImportError as e:
-            logger.warning(f"⚠️ Не удалось зарегистрировать модули сети: {e}")
+        # Модули сети теперь встроены в deployer-модули для полной независимости
 
         # Создание главного меню
         logger.info("🎛️ Создание главного меню...")

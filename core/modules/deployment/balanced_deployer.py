@@ -19,6 +19,10 @@ from core.proxmox.proxmox_client import ProxmoxClient
 
 logger = logging.getLogger(__name__)
 
+# ГЛОБАЛЬНЫЙ КЕШ BRIDGE'ЕЙ - разделяемый между всеми экземплярами deployer'ов!
+# ФОРМАТ: {node:poolsuffix:alias: allocated_bridge} для изоляции между пользователями
+_global_bridge_cache = {}  # {node:poolsuffix:alias: allocated_bridge}
+
 
 class BalancedDeployer(DeploymentInterface):
     """Сбалансированный развертыватель виртуальных машин"""
@@ -732,7 +736,7 @@ class BalancedDeployer(DeploymentInterface):
     def _configure_machine_network(self, vmid: int, node: str, networks: List[Dict],
                                  pool: str, device_type: str) -> None:
         """
-        Настроить сеть виртуальной машины через BridgeManager
+        Настроить сеть виртуальной машины (встроенная функциональность)
 
         Args:
             vmid: VMID машины
@@ -742,15 +746,17 @@ class BalancedDeployer(DeploymentInterface):
             device_type: Тип устройства
         """
         try:
-            # ⚠️ КРИТИЧНО: использовать BridgeManager для правильного выделения bridge!
-            from core.modules.network.bridge_manager import BridgeManager
-            bridge_manager = BridgeManager(self.proxmox)
+            # Подготовить все необходимые bridge'ы
+            bridge_mapping = self._prepare_bridges(node, networks, pool)
 
-            # ПЕРЕДАТЬ networks с alias'ами, BridgeManager конвертирует их в реальные bridge
-            if not bridge_manager.configure_network(vmid, node, networks, pool, device_type):
-                raise Exception(f"Ошибка настройки сети VM {vmid} через BridgeManager")
+            # Подготовить конфигурации интерфейсов
+            network_configs = self._prepare_network_configs(networks, bridge_mapping, device_type)
 
-            logger.info(f"Сеть VM {vmid} настроена через BridgeManager")
+            # Пакетная настройка всех интерфейсов
+            if not self.proxmox.configure_vm_network(node, vmid, network_configs):
+                raise Exception(f"Ошибка настройки сети VM {vmid}")
+
+            logger.info(f"Сеть VM {vmid} настроена (встроенная функциональность)")
 
         except Exception as e:
             logger.error(f"Ошибка настройки сети VM {vmid}: {e}")
@@ -760,6 +766,222 @@ class BalancedDeployer(DeploymentInterface):
         """Сгенерировать случайный пароль для обучающих стендов"""
         alphabet = string.digits  # Только цифры для простоты использования в обучении
         return ''.join(secrets.choice(alphabet) for _ in range(length))
+
+    def _allocate_bridge(self, node: str, bridge_name: str, pool: str,
+                        reserved: bool = False) -> tuple[str, int]:
+        """
+        Выделить bridge для сети с поддержкой VLAN
+
+        Пользователь задает ALIAS (hq, inet, hq.100), скрипт выделяет реальный bridge (vmbr1000+)
+
+        Args:
+            node: Нода размещения
+            bridge_name: ALIAS bridge'а из конфигурации пользователя (hq, inet, hq.100, etc)
+            pool: Пул пользователя
+            reserved: Флаг зарезервированного bridge'а
+
+        Returns:
+            Кортеж (имя_bridge, vlan_tag)
+        """
+        # Разбор имени bridge на базовое имя и VLAN
+        base_bridge_name, vlan_tag = self._parse_bridge_name(bridge_name)
+
+        # Reserved bridge - прямое использование без allocation
+        if reserved or bridge_name.startswith('**'):
+            actual_bridge = bridge_name.strip('*')
+            # Проверить существует ли зарезервированный bridge
+            if not self.proxmox.bridge_exists(node, actual_bridge):
+                logger.info(f"Создаем зарезервированный bridge {actual_bridge} на ноде {node}")
+                # Создать VLAN-aware bridge если указан VLAN
+                if vlan_tag > 0:
+                    self.proxmox.create_bridge(node, actual_bridge, vlan_aware=True)
+                else:
+                    self.proxmox.create_bridge(node, actual_bridge)
+            return actual_bridge, vlan_tag
+
+        # Bridge name должен быть ALIAS, а не реальным bridge именем
+        if base_bridge_name.startswith('vmbr'):
+            logger.debug(f"Используется реальное имя bridge '{base_bridge_name}' вместо alias")
+            return base_bridge_name, vlan_tag  # Вернем как есть, но с предупреждением
+
+        # Кеширование по node + pool + alias для ИЗОЛЯЦИИ между пользователями!
+        # Каждый пользователь получает свой уникальный bridge для каждого alias
+        pool_suffix = pool.split('@')[0] if '@' in pool else pool  # Извлекаем имя пула (student1)
+        cache_key = f"{node}:{pool_suffix}:{bridge_name}"
+
+        if cache_key in _global_bridge_cache:
+            allocated_bridge = _global_bridge_cache[cache_key]
+            # Валидация существующего bridge
+            if not self.proxmox.bridge_exists(node, allocated_bridge):
+                logger.warning(f"Bridge {allocated_bridge} не найден, создаем заново для alias '{bridge_name}' пользователя {pool_suffix}")
+                # Создать VLAN-aware bridge если указан VLAN
+                if vlan_tag > 0:
+                    self.proxmox.create_bridge(node, allocated_bridge, vlan_aware=True)
+                else:
+                    self.proxmox.create_bridge(node, allocated_bridge)
+            logger.debug(f"Пользователь '{pool_suffix}' - Alias '{bridge_name}' -> bridge '{allocated_bridge}' (из кеша)")
+            return allocated_bridge, vlan_tag
+
+        # Первый раз для этого пользователя+alias - выделяем новый bridge
+        allocated_bridge = self._allocate_new_bridge_for_alias(node, bridge_name)
+
+        # Создать VLAN-aware bridge если указан VLAN
+        if vlan_tag > 0:
+            logger.info(f"Создаем VLAN-aware bridge {allocated_bridge} для alias '{bridge_name}' на ноде {node}")
+            self.proxmox.create_bridge(node, allocated_bridge, vlan_aware=True)
+        else:
+            self.proxmox.create_bridge(node, allocated_bridge)
+
+        # Сохраняем в ГЛОБАЛЬНЫЙ кеш с учетом пользователя
+        _global_bridge_cache[cache_key] = allocated_bridge
+        logger.info(f"✅ Пользователь '{pool_suffix}' - Alias '{bridge_name}' -> выделен bridge '{allocated_bridge}' на ноде {node}")
+
+        return allocated_bridge, vlan_tag
+
+    def _allocate_new_bridge_for_alias(self, node: str, alias: str) -> str:
+        """
+        Выделить новый bridge для alias начиная с vmbr1000
+
+        Args:
+            node: Нода где выделить bridge
+            alias: Alias для которого выделяем bridge
+
+        Returns:
+            Имя выделенного bridge'а
+        """
+        # Всегда начинаем с vmbr1000 как указано в HOWTO
+        bridge_start_number = 1000
+        base_name = "vmbr"
+
+        # Ищем первый свободный bridge
+        for i in range(bridge_start_number, bridge_start_number + 1000):  # Защита от бесконечного цикла
+            candidate_bridge = f"{base_name}{i}"
+
+            # Проверяем существует ли уже такой bridge
+            if not self.proxmox.bridge_exists(node, candidate_bridge):
+                # Свободен! Создаем новый bridge
+                logger.info(f"Создаем новый bridge {candidate_bridge} для alias '{alias}' на ноде {node}")
+                if self.proxmox.create_bridge(node, candidate_bridge):
+                    return candidate_bridge
+                else:
+                    logger.error(f"Не удалось создать bridge {candidate_bridge}")
+                    continue
+
+        # Fallback если все bridge заняты (маловероятно)
+        timestamp_bridge = f"{base_name}{int(time.time())}"
+        logger.warning(f"Все стандартные bridge заняты, создаем {timestamp_bridge} для alias '{alias}'")
+        self.proxmox.create_bridge(node, timestamp_bridge)
+        return timestamp_bridge
+
+    def _prepare_bridges(self, node: str, networks: List[Dict], pool: str) -> Dict[str, tuple]:
+        """
+        Подготовить bridge'ы для сетевой конфигурации с поддержкой VLAN
+
+        Args:
+            node: Нода размещения
+            networks: Конфигурация сетей
+            pool: Пул пользователя
+
+        Returns:
+            Mapping bridge имен -> (имя_bridge, vlan_tag)
+        """
+        bridge_mapping = {}
+
+        for network in networks:
+            bridge_name = network.get('bridge')
+            if bridge_name:
+                reserved = network.get('reserved', False) or bridge_name.startswith('**')
+                allocated_bridge, vlan_tag = self._allocate_bridge(node, bridge_name, pool, reserved)
+                bridge_mapping[bridge_name] = (allocated_bridge, vlan_tag)
+
+        return bridge_mapping
+
+    def _prepare_network_configs(self, networks: List[Dict], bridge_mapping: Dict[str, tuple],
+                               device_type: str) -> Dict[str, str]:
+        """
+        Подготовить конфигурации сетевых интерфейсов согласно требованиям HOWTO с поддержкой VLAN
+
+        Args:
+            networks: Конфигурация сетей
+            bridge_mapping: Mapping bridge имен -> (имя_bridge, vlan_tag)
+            device_type: Тип устройства
+
+        Returns:
+            Словарь конфигураций интерфейсов
+        """
+        network_configs = {}
+
+        # Специальная обработка ecorouter устройств согласно HOWTO
+        if device_type == 'ecorouter':
+            # net0 всегда на vmbr0 с link_down=1 (управляющий интерфейс)
+            mac0 = self._generate_ecorouter_mac()
+            network_configs['net0'] = f'model=vmxnet3,bridge=vmbr0,macaddr={mac0},link_down=1'
+
+            # Остальные интерфейсы начинаются с net2 (net1 пропускается)
+            for i, network in enumerate(networks):
+                bridge_info = bridge_mapping.get(network['bridge'])
+                if not bridge_info:
+                    continue
+
+                bridge_name, vlan_tag = bridge_info
+                net_id = f"net{i+2}"  # net2, net3, net4...
+                mac = self._generate_ecorouter_mac()
+
+                # Добавить VLAN tag если указан
+                if vlan_tag > 0:
+                    network_configs[net_id] = f'model=vmxnet3,bridge={bridge_name},macaddr={mac},tag={vlan_tag}'
+                else:
+                    network_configs[net_id] = f'model=vmxnet3,bridge={bridge_name},macaddr={mac}'
+
+        # Обработка Linux виртуальных машин
+        else:
+            for i, network in enumerate(networks):
+                bridge_info = bridge_mapping.get(network['bridge'])
+                if not bridge_info:
+                    continue
+
+                bridge_name, vlan_tag = bridge_info
+                net_id = f"net{i+1}"  # net1, net2, net3...
+
+                # Добавить VLAN tag если указан
+                if vlan_tag > 0:
+                    network_configs[net_id] = f'model=virtio,bridge={bridge_name},firewall=1,tag={vlan_tag}'
+                else:
+                    network_configs[net_id] = f'model=virtio,bridge={bridge_name},firewall=1'
+
+        return network_configs
+
+    def _parse_bridge_name(self, bridge_name: str) -> tuple[str, int]:
+        """
+        Разобрать имя bridge на базовое имя и VLAN tag
+
+        Args:
+            bridge_name: Имя bridge (например, "hq.100")
+
+        Returns:
+            Кортеж (базовое_имя_bridge, vlan_tag)
+        """
+        if '.' in bridge_name:
+            parts = bridge_name.split('.')
+            if len(parts) == 2:
+                base_name = parts[0]
+                try:
+                    vlan_tag = int(parts[1])
+                    return base_name, vlan_tag
+                except ValueError:
+                    # Если вторая часть не число, считаем что VLAN не указан
+                    pass
+
+        return bridge_name, 0
+
+    def _generate_ecorouter_mac(self) -> str:
+        """Сгенерировать MAC адрес для ecorouter устройств из диапазона 1C:87:76:40:00:00 - 1C:87:76:4F:FF:FF"""
+        # Специальный диапазон для ecorouter: 1C:87:76:40:XX:XX
+        # Фиксированные байты: 1C:87:76:40
+        # Переменные байты: XX:XX (00:00 - FF:FF)
+        mac = [0x1C, 0x87, 0x76, 0x40]  # Ecorouter OUI prefix
+        mac.extend(secrets.randbelow(256) for _ in range(2))  # Случайные 2 байта
+        return ':'.join(f'{b:02x}' for b in mac)
 
     def _cleanup_user(self, user: str) -> None:
         """Очистить пользователя"""

@@ -17,6 +17,10 @@ from core.proxmox.proxmox_client import ProxmoxClient
 
 logger = logging.getLogger(__name__)
 
+# ГЛОБАЛЬНЫЙ КЕШ BRIDGE'ЕЙ - разделяемый между всеми экземплярами deployer'ов!
+# ФОРМАТ: {node:poolsuffix:alias: allocated_bridge} для изоляции между пользователями
+_global_bridge_cache = {}  # {node:poolsuffix:alias: allocated_bridge}
+
 
 class SmartDeployer(DeploymentInterface):
     """Умный развертыватель виртуальных машин с учетом нагрузки"""
@@ -456,40 +460,27 @@ class SmartDeployer(DeploymentInterface):
     def _configure_machine_network(self, vmid: int, node: str, networks: List[Dict],
                                  pool: str, device_type: str) -> None:
         """
-        Настроить сеть виртуальной машины
+        Настроить сеть виртуальной машины (встроенная функциональность)
 
         Args:
             vmid: VMID машины
             node: Нода размещения
-            networks: Конфигурация сетей
+            networks: Конфигурация сетей (с bridge alias'ами)
             pool: Имя пула
             device_type: Тип устройства
         """
         try:
-            network_configs = {}
+            # Подготовить все необходимые bridge'ы
+            bridge_mapping = self._prepare_bridges(node, networks, pool)
 
-            # Обработка ecorouter устройств
-            if device_type == 'ecorouter':
-                # Создать MAC адрес для управляющего интерфейса
-                mac = self._generate_mac_address()
-                network_configs['net0'] = f'model=vmxnet3,bridge=vmbr0,macaddr={mac},link_down=1'
+            # Подготовить конфигурации интерфейсов
+            network_configs = self._prepare_network_configs(networks, bridge_mapping, device_type)
 
-            # Настроить дополнительные интерфейсы
-            for i, network in enumerate(networks):
-                bridge = network.get('bridge', f'vmbr{i+1}')
-                net_id = f"net{i+1}" if device_type != 'ecorouter' else f"net{i+2}"
-
-                if device_type == 'ecorouter':
-                    mac = self._generate_mac_address()
-                    network_configs[net_id] = f'model=vmxnet3,bridge={bridge},macaddr={mac}'
-                else:
-                    network_configs[net_id] = f'model=virtio,bridge={bridge},firewall=1'
-
-            # Применить сетевую конфигурацию
+            # Пакетная настройка всех интерфейсов
             if not self.proxmox.configure_vm_network(node, vmid, network_configs):
                 raise Exception(f"Ошибка настройки сети VM {vmid}")
 
-            logger.info(f"Сеть VM {vmid} настроена")
+            logger.info(f"Сеть VM {vmid} настроена (встроенная функциональность)")
 
         except Exception as e:
             logger.error(f"Ошибка настройки сети VM {vmid}: {e}")
