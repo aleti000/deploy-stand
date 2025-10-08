@@ -99,15 +99,12 @@ class UserManager:
 
         # ПОСЛЕ УДАЛЕНИЯ ВСЕХ ПОЛЬЗОВАТЕЛЕЙ - ОЧИСТИТЬ НЕИСПОЛЬЗУЕМЫЕ МОСТЫ И ПЕРЕЗАГРУЗИТЬ СЕТЬ
         try:
-            from core.modules.network.bridge_manager import BridgeManager
-
             nodes = self.proxmox.get_nodes()
-            bridge_manager = BridgeManager(self.proxmox)
-            cleaned_bridges = bridge_manager.cleanup_unused_bridges(nodes)
+            cleaned_bridges = self.proxmox.cleanup_unused_bridges(nodes)
 
             if cleaned_bridges > 0:
                 logger.info(f"🧹 Очищено {cleaned_bridges} неиспользуемых сетевых мостов")
-                # Можно добавить в результаты: results['bridges_cleaned'] = cleaned_bridges
+                results['bridges_cleaned'] = cleaned_bridges
             else:
                 logger.info("ℹ️ Неиспользуемых мостов для очистки не найдено")
 
@@ -123,7 +120,7 @@ class UserManager:
                     print(f"  ❌ Ошибка обновления сети ноды {node}: {e}")
 
         except Exception as e:
-            logger.warning(f"⚠️ Ошибка очистки неиспользуемых мостов (нормально если модуль недоступен): {e}")
+            logger.warning(f"⚠️ Ошибка очистки неиспользуемых мостов: {e}")
 
         logger.info(f"Пакетное удаление завершено: успешных {len(results['successful'])}, "
                    f"неудачных {len(results['failed'])}, пропущенных {len(results['skipped'])}")

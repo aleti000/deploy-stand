@@ -53,11 +53,11 @@ class ModuleFactory:
         """Зарегистрировать модуль балансировки"""
         self.modules[f"balancing:{name}"] = module_class
 
-    def register_template_module(self, name: str, module_class: Type[TemplateInterface]):
+    def register_template_module(self, name: str, module_class):
         """Зарегистрировать модуль шаблонов"""
         self.modules[f"template:{name}"] = module_class
 
-    def register_network_module(self, name: str, module_class: Type[NetworkInterface]):
+    def register_network_module(self, name: str, module_class):
         """Зарегистрировать сетевой модуль"""
         self.modules[f"network:{name}"] = module_class
 
@@ -90,14 +90,14 @@ class ModuleFactory:
             raise ValueError(f"Модуль балансировки '{name}' не найден")
         return module_class(**kwargs)
 
-    def create_template_module(self, name: str, **kwargs) -> TemplateInterface:
+    def create_template_module(self, name: str, **kwargs):
         """Создать модуль шаблонов"""
         module_class = self.modules.get(f"template:{name}")
         if not module_class:
             raise ValueError(f"Модуль шаблонов '{name}' не найден")
         return module_class(**kwargs)
 
-    def create_network_module(self, name: str, **kwargs) -> NetworkInterface:
+    def create_network_module(self, name: str, **kwargs):
         """Создать сетевой модуль"""
         module_class = self.modules.get(f"network:{name}")
         if not module_class:

@@ -257,26 +257,8 @@ class MainMenu:
         print("\n🚀 Создание конфигурации развертывания")
         print("=" * 50)
 
-        # Быстрый выбор популярных конфигураций
-        print("Популярные шаблоны:")
-        print("  [1] Студенческий стенд (Linux VM + сеть)")
-        print("  [2] Сетевой стенд (Router + несколько сетей)")
-        print("  [3] Кастомная конфигурация")
-        print("  [0] Назад")
-
-        template_choice = input("Выберите шаблон (1-3) или 0 для назад: ").strip()
-
-        if template_choice == "0":
-            return "repeat"
-        elif template_choice in ["1", "2"]:
-            # Использовать предустановленные шаблоны
-            return self._create_config_from_template(template_choice)
-        elif template_choice == "3":
-            # Кастомная конфигурация
-            return self._create_custom_config()
-        else:
-            print("❌ Неверный выбор!")
-            return "repeat"
+        # Сразу переходим к кастомной конфигурации
+        return self._create_custom_config()
 
     def _deploy_menu(self):
         """Оптимизированное меню развертывания с предустановками"""
@@ -512,7 +494,12 @@ class MainMenu:
         choice = input("Выберите действие: ").strip()
 
         if choice == "1":
-            self._manage_user_lists_menu()
+            # Если списки существуют - показать меню выбора/создания
+            # Если списков нет - сразу перейти к созданию нового списка
+            if user_lists:
+                return self._manage_user_lists_menu()
+            else:
+                return self._create_user_list_interactive()
         elif choice == "2":
             self._show_all_user_lists()
         elif choice == "3":
@@ -1344,31 +1331,53 @@ class MainMenu:
                 users = self.config_manager.load_users(list_name)
                 print(f"  [{i}] {list_name} ({len(users)} пользователей)")
             print(f"  [{len(user_lists) + 1}] Создать новый список")
+
+            print("\nБыстрые действия:")
+            print("  [c] Создать новый список")
+            print("  [номер] Выбрать существующий список")
+            print("  [0] Назад")
+
+            try:
+                choice = input("Выберите действие: ").strip().lower()
+
+                if choice == 'c' or choice == str(len(user_lists) + 1):
+                    # Создать новый список
+                    return self._create_user_list_interactive()
+                elif choice == '0':
+                    return "repeat"
+                else:
+                    # Выбрать существующий список
+                    try:
+                        list_index = int(choice) - 1
+                        if 0 <= list_index < len(user_lists):
+                            selected_list = user_lists[list_index]
+                            return self._edit_user_list_interactive(selected_list)
+                        else:
+                            print(f"❌ Выберите номер от 1 до {len(user_lists)} или {len(user_lists) + 1} для создания нового")
+                            return "repeat"
+                    except ValueError:
+                        print("❌ Введите номер списка, 'c' для создания нового или 0 для назад")
+                        return "repeat"
+            except KeyboardInterrupt:
+                return "repeat"
         else:
             print("Списки пользователей не найдены")
             print("  [1] Создать новый список")
+            print("  [0] Назад")
 
-        try:
-            choice = input("Выберите список или 'c' для создания нового: ").strip().lower()
+            try:
+                choice = input("Выберите действие: ").strip().lower()
 
-            if choice == 'c' or (user_lists and choice == str(len(user_lists) + 1)):
-                # Создать новый список
-                return self._create_user_list_interactive()
-            else:
-                # Выбрать существующий список
-                try:
-                    list_index = int(choice) - 1
-                    if 0 <= list_index < len(user_lists):
-                        selected_list = user_lists[list_index]
-                        return self._edit_user_list_interactive(selected_list)
-                    else:
-                        print("❌ Неверный выбор!")
-                        return "repeat"
-                except ValueError:
-                    print("❌ Введите номер или 'c' для создания нового")
+                if choice == '1':
+                    # Создать новый список
+                    return self._create_user_list_interactive()
+                elif choice == '0':
                     return "repeat"
-        except KeyboardInterrupt:
-            return "repeat"
+                else:
+                    print("❌ Неверный выбор! Введите 1 для создания списка или 0 для назад")
+                    return "repeat"
+            except KeyboardInterrupt:
+                return "repeat"
 
     def _create_user_list_interactive(self):
         """Создать новый список пользователей"""

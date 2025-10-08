@@ -361,9 +361,14 @@ class ProxmoxClient:
             logger.error(f"Ошибка проверки bridge {bridge_name}: {e}")
             return False
 
-    def create_bridge(self, node: str, bridge_name: str) -> bool:
+    def create_bridge(self, node: str, bridge_name: str, bridge_vlan_aware: bool = False) -> bool:
         """Создать сетевой bridge"""
         try:
+            # Проверить существует ли bridge уже
+            if self.bridge_exists(node, bridge_name):
+                logger.info(f"Bridge {bridge_name} уже существует на ноде {node}")
+                return True
+
             # Создать bridge интерфейс
             bridge_config = {
                 'iface': bridge_name,
@@ -371,13 +376,27 @@ class ProxmoxClient:
                 'autostart': 1
             }
 
+            # Добавить параметр VLAN-aware если указан
+            if bridge_vlan_aware:
+                bridge_config['bridge_vlan_aware'] = True
+
             self.api.nodes(node).network.post(**bridge_config)
             logger.info(f"Bridge {bridge_name} создан на ноде {node}")
             return True
 
         except Exception as e:
-            logger.error(f"Ошибка создания bridge {bridge_name}: {e}")
-            return False
+            error_str = str(e)
+            # Если bridge уже существует - считаем успехом
+            if "already exists" in error_str.lower() or "interface already exists" in error_str.lower():
+                logger.info(f"Bridge {bridge_name} уже существует на ноде {node} (обработано как успех)")
+                return True
+            # Если ошибка типа boolean - логируем и возвращаем False
+            elif "type check" in error_str and "boolean" in error_str:
+                logger.error(f"Ошибка типа параметра bridge_vlan_aware для bridge {bridge_name}: {e}")
+                return False
+            else:
+                logger.error(f"Ошибка создания bridge {bridge_name}: {e}")
+                return False
 
     def delete_bridge(self, node: str, bridge_name: str) -> bool:
         """Удалить сетевой bridge"""
@@ -621,3 +640,81 @@ class ProxmoxClient:
         except Exception as e:
             logger.error(f"Ошибка обновления конфигурации сети ноды {node}: {e}")
             return False
+
+    def cleanup_unused_bridges(self, nodes: List[str]) -> int:
+        """
+        Очистить неиспользуемые сетевые мосты на всех нодах
+
+        Args:
+            nodes: Список нод для очистки
+
+        Returns:
+            Количество очищенных мостов
+        """
+        cleaned_count = 0
+
+        for node in nodes:
+            try:
+                logger.info(f"🔍 Анализируем мосты на ноде {node}")
+
+                # Получить все мосты на ноде
+                bridges = self.list_bridges(node)
+                logger.info(f"Найдено {len(bridges)} мостов на ноде {node}: {bridges}")
+
+                # Получить все VM на ноде
+                vms = self.get_vms_on_node(node)
+                logger.info(f"Найдено {len(vms)} VM на ноде {node}")
+
+                # Найти используемые мосты
+                used_bridges = set()
+
+                for vm in vms:
+                    vmid = vm.get('vmid')
+                    if vmid:
+                        try:
+                            vm_config = self.get_vm_config(node, vmid)
+                            # Проверить все сетевые интерфейсы VM
+                            for key, value in vm_config.items():
+                                if key.startswith('net') and value:
+                                    # Извлечь имя bridge из конфигурации сети
+                                    # Формат: model=virtio,bridge=vmbr1001,firewall=1
+                                    bridge_part = [part for part in str(value).split(',') if part.startswith('bridge=')]
+                                    if bridge_part:
+                                        bridge_name = bridge_part[0].split('=')[1]
+                                        used_bridges.add(bridge_name)
+                        except Exception as e:
+                            logger.warning(f"Не удалось проверить конфигурацию VM {vmid}: {e}")
+
+                logger.info(f"Используемые мосты на ноде {node}: {used_bridges}")
+
+                # Найти неиспользуемые мосты (начинающиеся с vmbr и больше vmbr1000)
+                unused_bridges = []
+                for bridge in bridges:
+                    if bridge.startswith('vmbr') and bridge != 'vmbr0':
+                        try:
+                            bridge_num = int(bridge.replace('vmbr', ''))
+                            if bridge_num >= 1000 and bridge not in used_bridges:
+                                unused_bridges.append(bridge)
+                        except ValueError:
+                            # Не числовой bridge, пропускаем
+                            continue
+
+                logger.info(f"Неиспользуемые мосты на ноде {node}: {unused_bridges}")
+
+                # Удалить неиспользуемые мосты
+                for bridge in unused_bridges:
+                    try:
+                        logger.info(f"🗑️ Удаляем неиспользуемый мост {bridge} на ноде {node}")
+                        if self.delete_bridge(node, bridge):
+                            cleaned_count += 1
+                            logger.info(f"✅ Мост {bridge} удален")
+                        else:
+                            logger.error(f"❌ Не удалось удалить мост {bridge}")
+                    except Exception as e:
+                        logger.error(f"Ошибка удаления моста {bridge}: {e}")
+
+            except Exception as e:
+                logger.error(f"Ошибка анализа мостов на ноде {node}: {e}")
+
+        logger.info(f"🧹 Очистка завершена: удалено {cleaned_count} неиспользуемых мостов")
+        return cleaned_count

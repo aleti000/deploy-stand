@@ -447,7 +447,7 @@ class RemoteDeployer(DeploymentInterface):
                 logger.info(f"Создаем зарезервированный bridge {actual_bridge} на ноде {node}")
                 # Создать VLAN-aware bridge если указан VLAN
                 if vlan_tag > 0:
-                    self.proxmox.create_bridge(node, actual_bridge, vlan_aware=True)
+                    self.proxmox.create_bridge(node, actual_bridge, bridge_vlan_aware=True)
                 else:
                     self.proxmox.create_bridge(node, actual_bridge)
             return actual_bridge, vlan_tag
@@ -457,37 +457,37 @@ class RemoteDeployer(DeploymentInterface):
             logger.debug(f"Используется реальное имя bridge '{base_bridge_name}' вместо alias")
             return base_bridge_name, vlan_tag  # Вернем как есть, но с предупреждением
 
-        # Кеширование по node + pool + alias для ИЗОЛЯЦИИ между пользователями!
-        # Каждый пользователь получает свой уникальный bridge для каждого alias
+        # Кеширование по node + pool + БАЗОВОЕ ИМЯ BRIDGE для совместного использования VLAN и non-VLAN вариантов
+        # Каждый пользователь получает один bridge для базового имени (hq), который может использоваться с разными VLAN tag'ами
         pool_suffix = pool.split('@')[0] if '@' in pool else pool  # Извлекаем имя пула (student1)
-        cache_key = f"{node}:{pool_suffix}:{bridge_name}"
+        base_cache_key = f"{node}:{pool_suffix}:{base_bridge_name}"
 
-        if cache_key in _global_bridge_cache:
-            allocated_bridge = _global_bridge_cache[cache_key]
+        if base_cache_key in _global_bridge_cache:
+            allocated_bridge = _global_bridge_cache[base_cache_key]
             # Валидация существующего bridge
             if not self.proxmox.bridge_exists(node, allocated_bridge):
-                logger.warning(f"Bridge {allocated_bridge} не найден, создаем заново для alias '{bridge_name}' пользователя {pool_suffix}")
+                logger.warning(f"Bridge {allocated_bridge} не найден, создаем заново для базового имени '{base_bridge_name}' пользователя {pool_suffix}")
                 # Создать VLAN-aware bridge если указан VLAN
                 if vlan_tag > 0:
-                    self.proxmox.create_bridge(node, allocated_bridge, vlan_aware=True)
+                    self.proxmox.create_bridge(node, allocated_bridge, bridge_vlan_aware=True)
                 else:
                     self.proxmox.create_bridge(node, allocated_bridge)
-            logger.debug(f"Пользователь '{pool_suffix}' - Alias '{bridge_name}' -> bridge '{allocated_bridge}' (из кеша)")
+            logger.debug(f"Пользователь '{pool_suffix}' - Базовое имя '{base_bridge_name}' -> bridge '{allocated_bridge}' (из кеша)")
             return allocated_bridge, vlan_tag
 
-        # Первый раз для этого пользователя+alias - выделяем новый bridge
-        allocated_bridge = self._allocate_new_bridge_for_alias(node, bridge_name)
+        # Первый раз для этого пользователя+базовое_имя - выделяем новый bridge
+        allocated_bridge = self._allocate_new_bridge_for_alias(node, base_bridge_name)
 
         # Создать VLAN-aware bridge если указан VLAN
         if vlan_tag > 0:
-            logger.info(f"Создаем VLAN-aware bridge {allocated_bridge} для alias '{bridge_name}' на ноде {node}")
-            self.proxmox.create_bridge(node, allocated_bridge, vlan_aware=True)
+            logger.info(f"Создаем VLAN-aware bridge {allocated_bridge} для базового имени '{base_bridge_name}' на ноде {node}")
+            self.proxmox.create_bridge(node, allocated_bridge, bridge_vlan_aware=True)
         else:
             self.proxmox.create_bridge(node, allocated_bridge)
 
-        # Сохраняем в ГЛОБАЛЬНЫЙ кеш с учетом пользователя
-        _global_bridge_cache[cache_key] = allocated_bridge
-        logger.info(f"✅ Пользователь '{pool_suffix}' - Alias '{bridge_name}' -> выделен bridge '{allocated_bridge}' на ноде {node}")
+        # Сохраняем в ГЛОБАЛЬНЫЙ кеш по БАЗОВОМУ имени bridge'а
+        _global_bridge_cache[base_cache_key] = allocated_bridge
+        logger.info(f"✅ Пользователь '{pool_suffix}' - Базовое имя '{base_bridge_name}' -> выделен bridge '{allocated_bridge}' на ноде {node}")
 
         return allocated_bridge, vlan_tag
 
