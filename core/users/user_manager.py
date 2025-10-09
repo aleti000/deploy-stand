@@ -10,6 +10,8 @@ import secrets
 import string
 from typing import Dict, List, Tuple, Any
 from core.proxmox.proxmox_client import ProxmoxClient
+from core.modules.vm_manager import VMManager
+from core.services.vm_service import VMService
 
 logger = logging.getLogger(__name__)
 
@@ -25,6 +27,8 @@ class UserManager:
             proxmox_client: Клиент для работы с Proxmox API
         """
         self.proxmox = proxmox_client
+        self.vm_manager = VMManager(proxmox_client)
+        self.vm_service = VMService(proxmox_client)
 
     def create_user_and_pool(self, username: str) -> Tuple[bool, str]:
         """
@@ -100,7 +104,7 @@ class UserManager:
         # ПОСЛЕ УДАЛЕНИЯ ВСЕХ ПОЛЬЗОВАТЕЛЕЙ - ОЧИСТИТЬ НЕИСПОЛЬЗУЕМЫЕ МОСТЫ И ПЕРЕЗАГРУЗИТЬ СЕТЬ
         try:
             nodes = self.proxmox.get_nodes()
-            cleaned_bridges = self.proxmox.cleanup_unused_bridges(nodes)
+            cleaned_bridges = self.vm_manager.cleanup_unused_bridges(nodes)
 
             if cleaned_bridges > 0:
                 logger.info(f"🧹 Очищено {cleaned_bridges} неиспользуемых сетевых мостов")
@@ -160,13 +164,13 @@ class UserManager:
             logger.info(f"🔍 Найдено {len(pool_vms)} VM в пуле {pool_name}")
 
             # ШАГ 1: Удалить сетевые интерфейсы всех VM (ВНАЧАЛЕ!)
-            networks_cleared = self._clear_vm_networks(pool_vms)
+            networks_cleared = self.vm_manager.clear_vm_networks(pool_vms)
 
             # ШАГ 2: Остановить все виртуальные машины (если не остановлены)
-            vms_stopped = self._stop_pool_vms(pool_name, pool_vms)
+            vms_stopped = self.vm_manager.stop_pool_vms(pool_name, pool_vms)
 
             # ШАГ 3: Удалить виртуальные машины
-            vms_deleted = self._delete_pool_vms(pool_name, pool_vms)
+            vms_deleted = self.vm_manager.delete_pool_vms(pool_name, pool_vms)
 
             # ДОПОЛНИТЕЛЬНАЯ ПАУЗА: Подождать завершения асинхронных операций удаления
             logger.info(f"⏳ Ждем завершения операций удаления VM... (10 сек)")
@@ -174,14 +178,14 @@ class UserManager:
             time.sleep(10)
 
             # Проверить что машины удалены (ДОПОЛНИТЕЛЬНАЯ ПРОВЕРКА)
-            vms_verified_1 = self._verify_vms_deleted(pool_name)
+            vms_verified_1 = self.vm_manager.verify_vms_deleted(pool_name)
 
             # Финальная верификация что машины действительно удалены
             vms_verified = vms_verified_1
             if not vms_verified:
                 logger.warning(f"⚠️ Нужна дополнительная пауза - повторная проверка через 10 сек")
                 time.sleep(10)
-                vms_verified = self._verify_vms_deleted(pool_name)
+                vms_verified = self.vm_manager.verify_vms_deleted(pool_name)
 
                 if not vms_verified:
                     logger.error(f"❌ ВМ в пуле {pool_name} не удалось удалить полностью, отказываемся удалять пул")
@@ -365,7 +369,7 @@ class UserManager:
                                 logger.warning(f"⚠️ Не удалось проверить статус VM {vmid}: {stop_e}")
 
                             # Попытка удаления VM
-                            delete_result = self.proxmox.delete_vm(node, vmid)
+                            delete_result = self.vm_service.delete_vm(node, vmid)
                             logger.debug(f"Результат вызова proxmox.delete_vm({node}, {vmid}): {delete_result}")
 
                             if delete_result:

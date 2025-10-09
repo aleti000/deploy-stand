@@ -2,6 +2,8 @@ template_mapping:
   100:
     PVE2: 117
     PVE3: 115
+    pve2: 103
+    pve3: 106
   101:
     PVE2: 110
     PVE3: 104

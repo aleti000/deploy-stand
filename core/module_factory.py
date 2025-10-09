@@ -36,11 +36,6 @@ class ModuleFactory:
 
             # Модули балансировки больше не используются после рефакторинга
             # (модули развертывания содержат встроенную балансировку)
-
-
-
-
-
         except ImportError as e:
             # В случае ошибок импорта, модули просто не будут зарегистрированы
             pass
@@ -67,19 +62,8 @@ class ModuleFactory:
         if not module_class:
             raise ValueError(f"Модуль развертывания '{name}' не найден")
 
-        # Специальная обработка для модулей, требующих балансировку
-        if name in ["balanced", "smart"]:
-            balancer_name = "simple" if name == "balanced" else "smart"
-
-            # Для SimpleBalancer нужен proxmox_client
-            if balancer_name == "simple":
-                balancer = self.create_balancing_module(balancer_name, proxmox_client=kwargs.get("proxmox_client"))
-            else:  # SmartBalancer
-                balancer = self.create_balancing_module(balancer_name,
-                                                      proxmox_client=kwargs.get("proxmox_client"),
-                                                      metrics=None,
-                                                      cache=None)
-            kwargs["balancing_module"] = balancer
+        # Модули balanced и smart используют встроенную балансировку
+        # Внешние модули балансировки больше не используются после рефакторинга
 
         return module_class(**kwargs)
 
