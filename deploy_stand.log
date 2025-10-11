@@ -222,3 +222,48 @@
 2025-10-11 17:34:38,543 - modules.user_list_manager - INFO - Удален список пользователей 'test'
 2025-10-11 17:34:50,416 - modules.user_list_manager - INFO - Создан список пользователей 'test' с 3 пользователями
 2025-10-11 17:35:59,750 - __main__ - INFO - Приложение завершено успешно
+2025-10-11 21:34:17,136 - __main__ - INFO - Запуск Deploy Stand - системы развертывания стендов ВМ
+2025-10-11 21:34:17,136 - modules.user_list_manager - INFO - Директория данных: data/user_list
+2025-10-11 21:34:17,140 - modules.connection_manager - INFO - Конфигурация загружена из config/connection_config.yaml
+2025-10-11 21:34:23,440 - __main__ - INFO - Используется сервер: pve_ - 192.168.122.201
+2025-10-11 21:34:26,553 - modules.proxmox_client - ERROR - Ошибка подключения к Proxmox 192.168.122.201:8006: HTTPSConnectionPool(host='192.168.122.201', port=8006): Max retries exceeded with url: /api2/json/access/ticket (Caused by NewConnectionError('<urllib3.connection.HTTPSConnection object at 0x7fe0b4d173b0>: Failed to establish a new connection: [Errno 113] No route to host'))
+2025-10-11 21:35:21,696 - __main__ - INFO - Запуск Deploy Stand - системы развертывания стендов ВМ
+2025-10-11 21:35:21,696 - modules.user_list_manager - INFO - Директория данных: data/user_list
+2025-10-11 21:35:21,699 - modules.connection_manager - INFO - Конфигурация загружена из config/connection_config.yaml
+2025-10-11 21:35:23,055 - __main__ - INFO - Используется сервер: pve_ - 192.168.122.201
+2025-10-11 21:35:23,207 - modules.proxmox_client - INFO - Успешное подключение к Proxmox 192.168.122.201:8006
+2025-10-11 21:35:23,207 - modules.proxmox_client - INFO - Версия Proxmox: {'version': '9.0.3', 'release': '9.0', 'repoid': '025864202ebb6109'}
+2025-10-11 21:35:23,208 - modules.proxmox_client - INFO - Отключено от Proxmox 192.168.122.201:8006
+2025-10-11 21:35:23,208 - modules.user_list_manager - INFO - Директория данных: data/user_list
+2025-10-11 21:35:23,328 - modules.proxmox_client - INFO - Успешное подключение к Proxmox 192.168.122.201:8006
+2025-10-11 21:35:23,328 - modules.proxmox_client - INFO - Версия Proxmox: {'repoid': '025864202ebb6109', 'release': '9.0', 'version': '9.0.3'}
+2025-10-11 21:35:23,328 - modules.menu - INFO - Успешное подключение к Proxmox через клиент
+2025-10-11 21:37:09,454 - __main__ - INFO - Приложение завершено успешно
+2025-10-11 21:37:43,995 - __main__ - INFO - Запуск Deploy Stand - системы развертывания стендов ВМ
+2025-10-11 21:37:43,995 - modules.user_list_manager - INFO - Директория данных: data/user_list
+2025-10-11 21:37:43,998 - modules.connection_manager - INFO - Конфигурация загружена из config/connection_config.yaml
+2025-10-11 21:37:45,462 - __main__ - INFO - Используется сервер: pve_ - 192.168.122.201
+2025-10-11 21:37:45,606 - modules.proxmox_client - INFO - Успешное подключение к Proxmox 192.168.122.201:8006
+2025-10-11 21:37:45,607 - modules.proxmox_client - INFO - Версия Proxmox: {'release': '9.0', 'version': '9.0.3', 'repoid': '025864202ebb6109'}
+2025-10-11 21:37:45,607 - modules.proxmox_client - INFO - Отключено от Proxmox 192.168.122.201:8006
+2025-10-11 21:37:45,608 - modules.user_list_manager - INFO - Директория данных: data/user_list
+2025-10-11 21:37:45,738 - modules.proxmox_client - INFO - Успешное подключение к Proxmox 192.168.122.201:8006
+2025-10-11 21:37:45,738 - modules.proxmox_client - INFO - Версия Proxmox: {'version': '9.0.3', 'release': '9.0', 'repoid': '025864202ebb6109'}
+2025-10-11 21:37:45,738 - modules.menu - INFO - Успешное подключение к Proxmox через клиент
+2025-10-11 21:39:07,454 - modules.stand_configure - INFO - Конфигурация test сохранена
+2025-10-11 21:39:48,420 - modules.stand_configure - INFO - Конфигурация test удалена
+2025-10-11 21:40:53,389 - modules.stand_configure - INFO - Конфигурация test_GWhq сохранена
+2025-10-11 21:41:24,916 - __main__ - INFO - Приложение завершено успешно
+2025-10-11 22:25:18,838 - __main__ - INFO - Запуск Deploy Stand - системы развертывания стендов ВМ
+2025-10-11 22:25:18,838 - __main__ - ERROR - Ошибка при запуске приложения: cannot import name 'DeployStandMenu' from 'modules.menu' (/data/git/deploy-stand/modules/menu/__init__.py)
+2025-10-11 22:25:55,136 - __main__ - INFO - Запуск Deploy Stand - системы развертывания стендов ВМ
+2025-10-11 22:25:55,137 - modules.user_list_manager - INFO - Директория данных: data/user_list
+2025-10-11 22:25:55,138 - modules.connection_manager - INFO - Конфигурация загружена из config/connection_config.yaml
+2025-10-11 22:26:03,078 - modules.connection_manager - INFO - Конфигурация загружена из config/connection_config.yaml
+2025-10-11 22:26:03,078 - __main__ - INFO - Используется сервер: pve_ - 192.168.122.201
+2025-10-11 22:26:03,207 - modules.proxmox_client - INFO - Успешное подключение к Proxmox 192.168.122.201:8006
+2025-10-11 22:26:03,207 - modules.proxmox_client - INFO - Версия Proxmox: {'release': '9.0', 'version': '9.0.3', 'repoid': '025864202ebb6109'}
+2025-10-11 22:26:03,208 - modules.proxmox_client - INFO - Отключено от Proxmox 192.168.122.201:8006
+2025-10-11 22:26:03,209 - modules.user_list_manager - INFO - Директория данных: data/user_list
+2025-10-11 22:26:05,301 - modules.user_list_manager - INFO - Директория данных: data/user_list
+2025-10-11 22:26:25,116 - __main__ - INFO - Приложение завершено успешно

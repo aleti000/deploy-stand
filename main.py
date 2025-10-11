@@ -15,7 +15,19 @@ project_root = Path(__file__).parent
 sys.path.insert(0, str(project_root))
 
 # Импорт модулей
-from modules.menu import run_menu
+import sys
+import importlib.util
+from pathlib import Path
+
+# Загружаем модуль menu.py напрямую
+menu_spec = importlib.util.spec_from_file_location("menu", Path(__file__).parent / "modules" / "menu.py")
+menu_module = importlib.util.module_from_spec(menu_spec)
+sys.modules["menu"] = menu_module
+menu_spec.loader.exec_module(menu_module)
+
+# Получаем функцию run_menu
+run_menu = menu_module.run_menu
+
 from modules.connection_manager import get_connection_manager
 from modules.proxmox_client import create_proxmox_client
 
@@ -42,7 +54,13 @@ async def main():
         logger.info("Запуск Deploy Stand - системы развертывания стендов ВМ")
 
         # Создаем меню для работы с мастером подключений
-        from modules.menu import DeployStandMenu
+        # Загружаем DeployStandMenu напрямую из файла menu.py
+        menu_spec = importlib.util.spec_from_file_location("menu", Path(__file__).parent / "modules" / "menu.py")
+        menu_module = importlib.util.module_from_spec(menu_spec)
+        sys.modules["menu"] = menu_module
+        menu_spec.loader.exec_module(menu_module)
+
+        DeployStandMenu = menu_module.DeployStandMenu
         menu = DeployStandMenu()
 
         # Запускаем мастер выбора/создания сервера

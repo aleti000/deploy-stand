@@ -1,0 +1,18 @@
+machines:
+- device_type: linux
+  name: gw
+  networks:
+  - bridge: '**vmbr0**'
+  - bridge: hq
+  template_node: pve1
+  template_vmid: 100
+- device_type: linux
+  name: hq
+  networks:
+  - bridge: hq
+  template_node: pve1
+  template_vmid: 100
+metadata:
+  created_at: '2025-10-11T21:40:53.388314'
+  version: '1.0'
+stand_type: linked
