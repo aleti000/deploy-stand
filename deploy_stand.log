@@ -1,0 +1,224 @@
+2025-10-11 15:20:11,801 - __main__ - INFO - Запуск Deploy Stand - системы развертывания стендов ВМ
+2025-10-11 15:20:11,801 - __main__ - INFO - Приложение успешно запущено
+2025-10-11 15:21:44,223 - __main__ - INFO - Запуск Deploy Stand - системы развертывания стендов ВМ
+2025-10-11 15:21:46,715 - modules.menu - ERROR - Недостаточно параметров для подключения к Proxmox
+2025-10-11 15:21:47,988 - modules.menu - ERROR - Недостаточно параметров для подключения к Proxmox
+2025-10-11 15:21:55,644 - __main__ - INFO - Приложение завершено успешно
+2025-10-11 15:25:01,728 - __main__ - INFO - Запуск Deploy Stand - системы развертывания стендов ВМ
+2025-10-11 15:25:01,730 - modules.config_manager - INFO - Конфигурация загружена из config/connection_config.yaml
+2025-10-11 15:25:01,730 - __main__ - INFO - Используется сервер: main - Основной сервер Proxmox
+2025-10-11 15:25:04,698 - modules.menu - ERROR - Недостаточно параметров для подключения к Proxmox
+2025-10-11 15:25:06,145 - modules.menu - ERROR - Недостаточно параметров для подключения к Proxmox
+2025-10-11 15:25:12,897 - modules.menu - ERROR - Недостаточно параметров для подключения к Proxmox
+2025-10-11 15:29:49,606 - __main__ - INFO - Приложение завершено успешно
+2025-10-11 15:30:18,980 - __main__ - INFO - Запуск Deploy Stand - системы развертывания стендов ВМ
+2025-10-11 15:30:18,983 - modules.config_manager - INFO - Конфигурация загружена из config/connection_config.yaml
+2025-10-11 15:30:37,213 - __main__ - INFO - Используется сервер: Основной сервер Proxmox - 192.168.1.100
+2025-10-11 15:30:39,053 - __main__ - INFO - Приложение завершено успешно
+2025-10-11 15:31:15,107 - __main__ - INFO - Запуск Deploy Stand - системы развертывания стендов ВМ
+2025-10-11 15:31:15,109 - modules.config_manager - INFO - Конфигурация загружена из config/connection_config.yaml
+2025-10-11 15:31:48,358 - modules.config_manager - INFO - Конфигурация сохранена в config/connection_config.yaml
+2025-10-11 15:31:52,556 - __main__ - INFO - Используется сервер: pve - 192.168.122.201
+2025-10-11 15:32:00,168 - modules.menu - INFO - Успешное подключение к Proxmox {'version': '9.0.3', 'release': '9.0', 'repoid': '025864202ebb6109'}
+2025-10-11 15:32:19,212 - __main__ - INFO - Приложение завершено успешно
+2025-10-11 15:33:19,950 - __main__ - INFO - Запуск Deploy Stand - системы развертывания стендов ВМ
+2025-10-11 15:33:19,954 - modules.config_manager - INFO - Конфигурация загружена из config/connection_config.yaml
+2025-10-11 15:33:29,155 - __main__ - INFO - Используется сервер: pve - 192.168.122.201
+2025-10-11 15:33:46,989 - modules.menu - INFO - Успешное подключение к Proxmox {'repoid': '025864202ebb6109', 'release': '9.0', 'version': '9.0.3'}
+2025-10-11 15:33:49,709 - modules.menu - INFO - Успешное подключение к Proxmox {'repoid': '025864202ebb6109', 'release': '9.0', 'version': '9.0.3'}
+2025-10-11 15:33:50,915 - modules.menu - INFO - Успешное подключение к Proxmox {'version': '9.0.3', 'release': '9.0', 'repoid': '025864202ebb6109'}
+2025-10-11 15:33:51,914 - modules.menu - INFO - Успешное подключение к Proxmox {'repoid': '025864202ebb6109', 'version': '9.0.3', 'release': '9.0'}
+2025-10-11 15:33:52,682 - modules.menu - INFO - Успешное подключение к Proxmox {'version': '9.0.3', 'release': '9.0', 'repoid': '025864202ebb6109'}
+2025-10-11 15:35:39,731 - __main__ - INFO - Приложение завершено успешно
+2025-10-11 15:36:27,340 - __main__ - INFO - Запуск Deploy Stand - системы развертывания стендов ВМ
+2025-10-11 15:36:27,343 - modules.config_manager - INFO - Конфигурация загружена из config/connection_config.yaml
+2025-10-11 15:36:30,521 - __main__ - INFO - Используется сервер: pve - 192.168.122.201
+2025-10-11 15:36:46,883 - modules.config_manager - INFO - Конфигурация загружена из config/connection_config.yaml
+2025-10-11 15:37:24,233 - __main__ - INFO - Приложение завершено успешно
+2025-10-11 15:37:36,978 - __main__ - INFO - Запуск Deploy Stand - системы развертывания стендов ВМ
+2025-10-11 15:37:36,982 - modules.config_manager - INFO - Конфигурация загружена из config/connection_config.yaml
+2025-10-11 15:37:38,921 - __main__ - INFO - Используется сервер: pve - 192.168.122.201
+2025-10-11 15:37:45,482 - modules.config_manager - INFO - Конфигурация загружена из config/connection_config.yaml
+2025-10-11 15:38:02,369 - modules.config_manager - INFO - Конфигурация сохранена в config/connection_config.yaml
+2025-10-11 15:39:18,615 - __main__ - INFO - Приложение завершено успешно
+2025-10-11 15:39:20,227 - __main__ - INFO - Запуск Deploy Stand - системы развертывания стендов ВМ
+2025-10-11 15:39:20,230 - modules.config_manager - INFO - Конфигурация загружена из config/connection_config.yaml
+2025-10-11 15:39:38,647 - __main__ - ERROR - Не удалось получить конфигурацию сервера
+2025-10-11 15:39:40,680 - __main__ - INFO - Запуск Deploy Stand - системы развертывания стендов ВМ
+2025-10-11 15:39:40,683 - modules.config_manager - INFO - Конфигурация загружена из config/connection_config.yaml
+2025-10-11 15:39:56,656 - modules.config_manager - INFO - Конфигурация загружена из config/connection_config.yaml
+2025-10-11 15:40:38,862 - __main__ - ERROR - Не удалось получить конфигурацию сервера
+2025-10-11 15:42:24,293 - __main__ - INFO - Запуск Deploy Stand - системы развертывания стендов ВМ
+2025-10-11 15:42:24,296 - modules.config_manager - INFO - Конфигурация загружена из config/connection_config.yaml
+2025-10-11 15:42:30,893 - __main__ - ERROR - Не удалось получить конфигурацию сервера
+2025-10-11 15:42:41,725 - __main__ - INFO - Запуск Deploy Stand - системы развертывания стендов ВМ
+2025-10-11 15:42:41,729 - modules.config_manager - INFO - Конфигурация загружена из config/connection_config.yaml
+2025-10-11 15:42:47,512 - modules.config_manager - INFO - Конфигурация загружена из config/connection_config.yaml
+2025-10-11 15:42:58,287 - modules.config_manager - INFO - Конфигурация загружена из config/connection_config.yaml
+2025-10-11 15:43:19,414 - modules.config_manager - INFO - Конфигурация сохранена в config/connection_config.yaml
+2025-10-11 15:43:23,509 - __main__ - INFO - Используется сервер: pve - 192.168.122.201
+2025-10-11 15:43:36,934 - modules.config_manager - INFO - Конфигурация загружена из config/connection_config.yaml
+2025-10-11 15:45:38,995 - __main__ - INFO - Приложение завершено успешно
+2025-10-11 15:45:54,733 - __main__ - INFO - Запуск Deploy Stand - системы развертывания стендов ВМ
+2025-10-11 15:45:54,736 - modules.config_manager - INFO - Конфигурация загружена из config/connection_config.yaml
+2025-10-11 15:46:11,410 - __main__ - ERROR - Не удалось получить конфигурацию сервера
+2025-10-11 15:46:13,962 - __main__ - INFO - Запуск Deploy Stand - системы развертывания стендов ВМ
+2025-10-11 15:46:13,966 - modules.config_manager - INFO - Конфигурация загружена из config/connection_config.yaml
+2025-10-11 15:46:48,044 - modules.config_manager - INFO - Конфигурация сохранена в config/connection_config.yaml
+2025-10-11 15:46:51,002 - __main__ - INFO - Используется сервер: pve_ - 192.168.122.201
+2025-10-11 15:46:54,686 - modules.config_manager - INFO - Конфигурация загружена из config/connection_config.yaml
+2025-10-11 15:46:58,619 - modules.config_manager - INFO - Конфигурация сохранена в config/connection_config.yaml
+2025-10-11 15:47:02,500 - modules.config_manager - INFO - Конфигурация загружена из config/connection_config.yaml
+2025-10-11 15:47:15,099 - modules.config_manager - INFO - Конфигурация загружена из config/connection_config.yaml
+2025-10-11 15:48:27,857 - __main__ - INFO - Приложение завершено успешно
+2025-10-11 15:48:29,115 - __main__ - INFO - Запуск Deploy Stand - системы развертывания стендов ВМ
+2025-10-11 15:48:29,118 - modules.config_manager - INFO - Конфигурация загружена из config/connection_config.yaml
+2025-10-11 15:48:30,665 - __main__ - INFO - Используется сервер: pve_ - 192.168.122.201
+2025-10-11 15:48:38,826 - modules.config_manager - INFO - Конфигурация загружена из config/connection_config.yaml
+2025-10-11 15:52:20,022 - __main__ - INFO - Приложение завершено успешно
+2025-10-11 15:52:28,651 - __main__ - INFO - Запуск Deploy Stand - системы развертывания стендов ВМ
+2025-10-11 15:52:28,655 - modules.config_manager - INFO - Конфигурация загружена из config/connection_config.yaml
+2025-10-11 15:52:29,774 - __main__ - INFO - Используется сервер: pve_ - 192.168.122.201
+2025-10-11 15:53:25,597 - __main__ - INFO - Приложение завершено успешно
+2025-10-11 15:53:27,103 - __main__ - INFO - Запуск Deploy Stand - системы развертывания стендов ВМ
+2025-10-11 15:53:27,106 - modules.config_manager - INFO - Конфигурация загружена из config/connection_config.yaml
+2025-10-11 15:53:28,669 - __main__ - INFO - Используется сервер: pve_ - 192.168.122.201
+2025-10-11 15:54:21,029 - __main__ - INFO - Приложение завершено успешно
+2025-10-11 15:54:41,091 - __main__ - INFO - Запуск Deploy Stand - системы развертывания стендов ВМ
+2025-10-11 15:54:41,095 - modules.config_manager - INFO - Конфигурация загружена из config/connection_config.yaml
+2025-10-11 15:54:42,173 - __main__ - INFO - Используется сервер: pve_ - 192.168.122.201
+2025-10-11 15:54:42,173 - __main__ - ERROR - Ошибка тестирования подключения: name 'create_proxmox_client' is not defined
+2025-10-11 15:55:19,863 - __main__ - INFO - Запуск Deploy Stand - системы развертывания стендов ВМ
+2025-10-11 15:55:19,866 - modules.config_manager - INFO - Конфигурация загружена из config/connection_config.yaml
+2025-10-11 15:55:20,812 - __main__ - INFO - Используется сервер: pve_ - 192.168.122.201
+2025-10-11 15:55:20,939 - modules.proxmox_client - INFO - Успешное подключение к Proxmox 192.168.122.201:8006
+2025-10-11 15:55:20,939 - modules.proxmox_client - INFO - Версия Proxmox: {'repoid': '025864202ebb6109', 'release': '9.0', 'version': '9.0.3'}
+2025-10-11 15:55:20,940 - modules.proxmox_client - INFO - Отключено от Proxmox 192.168.122.201:8006
+2025-10-11 15:55:21,062 - modules.proxmox_client - INFO - Успешное подключение к Proxmox 192.168.122.201:8006
+2025-10-11 15:55:21,062 - modules.proxmox_client - INFO - Версия Proxmox: {'repoid': '025864202ebb6109', 'version': '9.0.3', 'release': '9.0'}
+2025-10-11 15:55:21,062 - modules.menu - INFO - Успешное подключение к Proxmox через клиент
+2025-10-11 15:57:26,827 - __main__ - INFO - Приложение завершено успешно
+2025-10-11 15:57:32,205 - __main__ - INFO - Запуск Deploy Stand - системы развертывания стендов ВМ
+2025-10-11 15:57:32,208 - modules.config_manager - INFO - Конфигурация загружена из config/connection_config.yaml
+2025-10-11 15:57:33,442 - __main__ - INFO - Используется сервер: pve_ - 192.168.122.201
+2025-10-11 15:57:33,568 - modules.proxmox_client - INFO - Успешное подключение к Proxmox 192.168.122.201:8006
+2025-10-11 15:57:33,568 - modules.proxmox_client - INFO - Версия Proxmox: {'repoid': '025864202ebb6109', 'release': '9.0', 'version': '9.0.3'}
+2025-10-11 15:57:33,568 - modules.proxmox_client - INFO - Отключено от Proxmox 192.168.122.201:8006
+2025-10-11 15:57:33,688 - modules.proxmox_client - INFO - Успешное подключение к Proxmox 192.168.122.201:8006
+2025-10-11 15:57:33,688 - modules.proxmox_client - INFO - Версия Proxmox: {'repoid': '025864202ebb6109', 'version': '9.0.3', 'release': '9.0'}
+2025-10-11 15:57:33,688 - modules.menu - INFO - Успешное подключение к Proxmox через клиент
+2025-10-11 15:57:52,420 - modules.config_manager - INFO - Конфигурация загружена из config/connection_config.yaml
+2025-10-11 15:59:19,185 - __main__ - INFO - Приложение завершено успешно
+2025-10-11 15:59:25,771 - __main__ - INFO - Запуск Deploy Stand - системы развертывания стендов ВМ
+2025-10-11 15:59:25,774 - modules.config_manager - INFO - Конфигурация загружена из config/connection_config.yaml
+2025-10-11 15:59:26,873 - __main__ - INFO - Используется сервер: pve_ - 192.168.122.201
+2025-10-11 15:59:27,003 - modules.proxmox_client - INFO - Успешное подключение к Proxmox 192.168.122.201:8006
+2025-10-11 15:59:27,003 - modules.proxmox_client - INFO - Версия Proxmox: {'version': '9.0.3', 'release': '9.0', 'repoid': '025864202ebb6109'}
+2025-10-11 15:59:27,003 - modules.proxmox_client - INFO - Отключено от Proxmox 192.168.122.201:8006
+2025-10-11 15:59:27,124 - modules.proxmox_client - INFO - Успешное подключение к Proxmox 192.168.122.201:8006
+2025-10-11 15:59:27,124 - modules.proxmox_client - INFO - Версия Proxmox: {'repoid': '025864202ebb6109', 'release': '9.0', 'version': '9.0.3'}
+2025-10-11 15:59:27,124 - modules.menu - INFO - Успешное подключение к Proxmox через клиент
+2025-10-11 15:59:31,411 - modules.config_manager - INFO - Конфигурация загружена из config/connection_config.yaml
+2025-10-11 15:59:34,275 - modules.config_manager - INFO - Конфигурация загружена из config/connection_config.yaml
+2025-10-11 15:59:53,105 - __main__ - INFO - Приложение завершено успешно
+2025-10-11 15:59:54,227 - __main__ - INFO - Запуск Deploy Stand - системы развертывания стендов ВМ
+2025-10-11 15:59:54,230 - modules.config_manager - INFO - Конфигурация загружена из config/connection_config.yaml
+2025-10-11 15:59:56,761 - __main__ - INFO - Используется сервер: pve_ - 192.168.122.201
+2025-10-11 15:59:56,889 - modules.proxmox_client - INFO - Успешное подключение к Proxmox 192.168.122.201:8006
+2025-10-11 15:59:56,889 - modules.proxmox_client - INFO - Версия Proxmox: {'repoid': '025864202ebb6109', 'release': '9.0', 'version': '9.0.3'}
+2025-10-11 15:59:56,890 - modules.proxmox_client - INFO - Отключено от Proxmox 192.168.122.201:8006
+2025-10-11 15:59:57,010 - modules.proxmox_client - INFO - Успешное подключение к Proxmox 192.168.122.201:8006
+2025-10-11 15:59:57,010 - modules.proxmox_client - INFO - Версия Proxmox: {'repoid': '025864202ebb6109', 'version': '9.0.3', 'release': '9.0'}
+2025-10-11 15:59:57,010 - modules.menu - INFO - Успешное подключение к Proxmox через клиент
+2025-10-11 15:59:59,058 - __main__ - INFO - Приложение завершено успешно
+2025-10-11 16:05:37,357 - __main__ - INFO - Запуск Deploy Stand - системы развертывания стендов ВМ
+2025-10-11 16:05:37,361 - modules.connection_manager - INFO - Конфигурация загружена из config/connection_config.yaml
+2025-10-11 16:05:38,813 - __main__ - INFO - Используется сервер: pve_ - 192.168.122.201
+2025-10-11 16:05:38,942 - modules.proxmox_client - INFO - Успешное подключение к Proxmox 192.168.122.201:8006
+2025-10-11 16:05:38,942 - modules.proxmox_client - INFO - Версия Proxmox: {'version': '9.0.3', 'release': '9.0', 'repoid': '025864202ebb6109'}
+2025-10-11 16:05:38,943 - modules.proxmox_client - INFO - Отключено от Proxmox 192.168.122.201:8006
+2025-10-11 16:05:39,067 - modules.proxmox_client - INFO - Успешное подключение к Proxmox 192.168.122.201:8006
+2025-10-11 16:05:39,067 - modules.proxmox_client - INFO - Версия Proxmox: {'repoid': '025864202ebb6109', 'version': '9.0.3', 'release': '9.0'}
+2025-10-11 16:05:39,067 - modules.menu - INFO - Успешное подключение к Proxmox через клиент
+2025-10-11 16:05:42,799 - modules.connection_manager - INFO - Конфигурация загружена из config/connection_config.yaml
+2025-10-11 16:06:56,253 - __main__ - INFO - Приложение завершено успешно
+2025-10-11 16:11:13,808 - __main__ - INFO - Запуск Deploy Stand - системы развертывания стендов ВМ
+2025-10-11 16:11:13,812 - modules.connection_manager - INFO - Конфигурация загружена из config/connection_config.yaml
+2025-10-11 16:11:15,337 - __main__ - INFO - Используется сервер: pve_ - 192.168.122.201
+2025-10-11 16:11:15,464 - modules.proxmox_client - INFO - Успешное подключение к Proxmox 192.168.122.201:8006
+2025-10-11 16:11:15,465 - modules.proxmox_client - INFO - Версия Proxmox: {'repoid': '025864202ebb6109', 'release': '9.0', 'version': '9.0.3'}
+2025-10-11 16:11:15,465 - modules.proxmox_client - INFO - Отключено от Proxmox 192.168.122.201:8006
+2025-10-11 16:11:15,588 - modules.proxmox_client - INFO - Успешное подключение к Proxmox 192.168.122.201:8006
+2025-10-11 16:11:15,588 - modules.proxmox_client - INFO - Версия Proxmox: {'release': '9.0', 'version': '9.0.3', 'repoid': '025864202ebb6109'}
+2025-10-11 16:11:15,588 - modules.menu - INFO - Успешное подключение к Proxmox через клиент
+2025-10-11 16:11:19,396 - modules.connection_manager - INFO - Конфигурация загружена из config/connection_config.yaml
+2025-10-11 16:11:24,385 - __main__ - INFO - Приложение завершено успешно
+2025-10-11 17:14:55,245 - __main__ - INFO - Запуск Deploy Stand - системы развертывания стендов ВМ
+2025-10-11 17:14:55,245 - __main__ - ERROR - Ошибка при запуске приложения: 'UserListManager' object has no attribute '_ensure_data_directory'
+2025-10-11 17:15:15,899 - __main__ - INFO - Запуск Deploy Stand - системы развертывания стендов ВМ
+2025-10-11 17:15:15,899 - __main__ - ERROR - Ошибка при запуске приложения: 'UserListManager' object has no attribute '_ensure_data_directory'
+2025-10-11 17:16:17,802 - __main__ - INFO - Запуск Deploy Stand - системы развертывания стендов ВМ
+2025-10-11 17:16:17,803 - modules.user_list_manager - INFO - Директория данных: data/user_list
+2025-10-11 17:16:17,806 - modules.connection_manager - INFO - Конфигурация загружена из config/connection_config.yaml
+2025-10-11 17:16:19,898 - __main__ - INFO - Используется сервер: pve_ - 192.168.122.201
+2025-10-11 17:16:20,022 - modules.proxmox_client - INFO - Успешное подключение к Proxmox 192.168.122.201:8006
+2025-10-11 17:16:20,022 - modules.proxmox_client - INFO - Версия Proxmox: {'repoid': '025864202ebb6109', 'version': '9.0.3', 'release': '9.0'}
+2025-10-11 17:16:20,022 - modules.proxmox_client - INFO - Отключено от Proxmox 192.168.122.201:8006
+2025-10-11 17:16:20,023 - modules.user_list_manager - INFO - Директория данных: data/user_list
+2025-10-11 17:16:20,141 - modules.proxmox_client - INFO - Успешное подключение к Proxmox 192.168.122.201:8006
+2025-10-11 17:16:20,141 - modules.proxmox_client - INFO - Версия Proxmox: {'release': '9.0', 'version': '9.0.3', 'repoid': '025864202ebb6109'}
+2025-10-11 17:16:20,141 - modules.menu - INFO - Успешное подключение к Proxmox через клиент
+2025-10-11 17:16:47,171 - modules.user_list_manager - INFO - Создан список пользователей 'test_list' с 3 пользователями
+2025-10-11 17:18:06,074 - __main__ - INFO - Приложение завершено успешно
+2025-10-11 17:18:38,584 - __main__ - INFO - Запуск Deploy Stand - системы развертывания стендов ВМ
+2025-10-11 17:18:38,584 - modules.user_list_manager - INFO - Директория данных: data/user_list
+2025-10-11 17:18:38,587 - modules.connection_manager - INFO - Конфигурация загружена из config/connection_config.yaml
+2025-10-11 17:18:39,897 - __main__ - INFO - Используется сервер: pve_ - 192.168.122.201
+2025-10-11 17:18:40,026 - modules.proxmox_client - INFO - Успешное подключение к Proxmox 192.168.122.201:8006
+2025-10-11 17:18:40,026 - modules.proxmox_client - INFO - Версия Proxmox: {'repoid': '025864202ebb6109', 'release': '9.0', 'version': '9.0.3'}
+2025-10-11 17:18:40,026 - modules.proxmox_client - INFO - Отключено от Proxmox 192.168.122.201:8006
+2025-10-11 17:18:40,027 - modules.user_list_manager - INFO - Директория данных: data/user_list
+2025-10-11 17:18:40,148 - modules.proxmox_client - INFO - Успешное подключение к Proxmox 192.168.122.201:8006
+2025-10-11 17:18:40,148 - modules.proxmox_client - INFO - Версия Proxmox: {'repoid': '025864202ebb6109', 'version': '9.0.3', 'release': '9.0'}
+2025-10-11 17:18:40,148 - modules.menu - INFO - Успешное подключение к Proxmox через клиент
+2025-10-11 17:19:18,944 - modules.user_list_manager - INFO - Удален список пользователей 'test_list'
+2025-10-11 17:20:22,760 - __main__ - INFO - Приложение завершено успешно
+2025-10-11 17:21:21,640 - __main__ - INFO - Запуск Deploy Stand - системы развертывания стендов ВМ
+2025-10-11 17:21:21,640 - modules.user_list_manager - INFO - Директория данных: data/user_list
+2025-10-11 17:21:21,644 - modules.connection_manager - INFO - Конфигурация загружена из config/connection_config.yaml
+2025-10-11 17:21:23,072 - __main__ - INFO - Используется сервер: pve_ - 192.168.122.201
+2025-10-11 17:21:23,215 - modules.proxmox_client - INFO - Успешное подключение к Proxmox 192.168.122.201:8006
+2025-10-11 17:21:23,215 - modules.proxmox_client - INFO - Версия Proxmox: {'repoid': '025864202ebb6109', 'release': '9.0', 'version': '9.0.3'}
+2025-10-11 17:21:23,216 - modules.proxmox_client - INFO - Отключено от Proxmox 192.168.122.201:8006
+2025-10-11 17:21:23,216 - modules.user_list_manager - INFO - Директория данных: data/user_list
+2025-10-11 17:21:23,341 - modules.proxmox_client - INFO - Успешное подключение к Proxmox 192.168.122.201:8006
+2025-10-11 17:21:23,341 - modules.proxmox_client - INFO - Версия Proxmox: {'repoid': '025864202ebb6109', 'version': '9.0.3', 'release': '9.0'}
+2025-10-11 17:21:23,341 - modules.menu - INFO - Успешное подключение к Proxmox через клиент
+2025-10-11 17:24:23,230 - __main__ - INFO - Приложение завершено успешно
+2025-10-11 17:28:09,592 - __main__ - INFO - Запуск Deploy Stand - системы развертывания стендов ВМ
+2025-10-11 17:28:09,592 - modules.user_list_manager - INFO - Директория данных: data/user_list
+2025-10-11 17:28:09,596 - modules.connection_manager - INFO - Конфигурация загружена из config/connection_config.yaml
+2025-10-11 17:28:11,146 - __main__ - INFO - Используется сервер: pve_ - 192.168.122.201
+2025-10-11 17:28:11,270 - modules.proxmox_client - INFO - Успешное подключение к Proxmox 192.168.122.201:8006
+2025-10-11 17:28:11,270 - modules.proxmox_client - INFO - Версия Proxmox: {'repoid': '025864202ebb6109', 'release': '9.0', 'version': '9.0.3'}
+2025-10-11 17:28:11,270 - modules.proxmox_client - INFO - Отключено от Proxmox 192.168.122.201:8006
+2025-10-11 17:28:11,270 - modules.user_list_manager - INFO - Директория данных: data/user_list
+2025-10-11 17:28:11,389 - modules.proxmox_client - INFO - Успешное подключение к Proxmox 192.168.122.201:8006
+2025-10-11 17:28:11,389 - modules.proxmox_client - INFO - Версия Proxmox: {'release': '9.0', 'version': '9.0.3', 'repoid': '025864202ebb6109'}
+2025-10-11 17:28:11,389 - modules.menu - INFO - Успешное подключение к Proxmox через клиент
+2025-10-11 17:29:06,011 - modules.user_list_manager - INFO - Создан список пользователей 'test' с 3 пользователями
+2025-10-11 17:30:06,634 - __main__ - INFO - Приложение завершено успешно
+2025-10-11 17:34:29,117 - __main__ - INFO - Запуск Deploy Stand - системы развертывания стендов ВМ
+2025-10-11 17:34:29,117 - modules.user_list_manager - INFO - Директория данных: data/user_list
+2025-10-11 17:34:29,120 - modules.connection_manager - INFO - Конфигурация загружена из config/connection_config.yaml
+2025-10-11 17:34:30,503 - __main__ - INFO - Используется сервер: pve_ - 192.168.122.201
+2025-10-11 17:34:30,629 - modules.proxmox_client - INFO - Успешное подключение к Proxmox 192.168.122.201:8006
+2025-10-11 17:34:30,629 - modules.proxmox_client - INFO - Версия Proxmox: {'release': '9.0', 'version': '9.0.3', 'repoid': '025864202ebb6109'}
+2025-10-11 17:34:30,629 - modules.proxmox_client - INFO - Отключено от Proxmox 192.168.122.201:8006
+2025-10-11 17:34:30,630 - modules.user_list_manager - INFO - Директория данных: data/user_list
+2025-10-11 17:34:30,751 - modules.proxmox_client - INFO - Успешное подключение к Proxmox 192.168.122.201:8006
+2025-10-11 17:34:30,751 - modules.proxmox_client - INFO - Версия Proxmox: {'release': '9.0', 'version': '9.0.3', 'repoid': '025864202ebb6109'}
+2025-10-11 17:34:30,751 - modules.menu - INFO - Успешное подключение к Proxmox через клиент
+2025-10-11 17:34:38,543 - modules.user_list_manager - INFO - Удален список пользователей 'test'
+2025-10-11 17:34:50,416 - modules.user_list_manager - INFO - Создан список пользователей 'test' с 3 пользователями
+2025-10-11 17:35:59,750 - __main__ - INFO - Приложение завершено успешно

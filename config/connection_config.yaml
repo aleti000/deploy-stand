@@ -1,0 +1,32 @@
+defaults:
+  port: 8006
+  retries: 3
+  timeout: 30
+  verify_ssl: false
+proxmox_servers:
+  pve_:
+    description: ''
+    enabled: true
+    host: 192.168.122.201
+    name: pve_
+    password: toor
+    port: 8006
+    token_name: ''
+    token_value: ''
+    user: root@pam
+    verify_ssl: false
+server_groups:
+  all:
+    description: Все доступные серверы
+    servers:
+    - main
+    - backup
+    - local
+  development:
+    description: Группа серверов для разработки
+    servers:
+    - local
+  production:
+    description: Основная группа серверов для production
+    servers:
+    - main
