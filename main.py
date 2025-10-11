@@ -1,125 +1,101 @@
 #!/usr/bin/env python3
 """
-Deploy-Stand - Модульная система для автоматизированного развертывания виртуальных машин в кластере Proxmox VE
-
-Точка входа в приложение
+Deploy Stand - Система развертывания виртуальных стендов для студентов на базе Proxmox
+Единая точка входа в приложение
 """
 
-import sys
-import os
+import asyncio
 import logging
-from typing import Optional
+import os
+import sys
+from pathlib import Path
 
-# Добавляем корневую директорию в путь для импортов
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+# Добавляем корневую папку проекта в Python path
+project_root = Path(__file__).parent
+sys.path.insert(0, str(project_root))
 
-from core.module_factory import ModuleFactory
-from core.config.config_manager import ConfigManager
-from ui.cli.menu_system import MainMenu
-from utils.logging.logger import setup_logging
-from utils.caching.cache_manager import CacheManager
-from utils.monitoring.metrics import MetricsCollector
+# Импорт модулей
+from modules.menu import run_menu
+from modules.connection_manager import get_connection_manager
+from modules.proxmox_client import create_proxmox_client
+
+# Настройка логирования
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    handlers=[
+        logging.FileHandler('deploy_stand.log'),
+        logging.StreamHandler()
+    ]
+)
+
+logger = logging.getLogger(__name__)
 
 
-def main():
+async def main():
     """Главная функция приложения"""
     try:
-        # Настройка логирования
-        logger = setup_logging()
-        logger.info("🚀 Запуск Deploy-Stand...")
+        # Очищаем экран при запуске
+        import os
+        os.system('clear' if os.name != 'nt' else 'cls')
 
-        # Инициализация компонентов системы
-        logger.info("📦 Инициализация компонентов системы...")
+        logger.info("Запуск Deploy Stand - системы развертывания стендов ВМ")
 
-        # Создание фабрики модулей
-        module_factory = ModuleFactory()
+        # Создаем меню для работы с мастером подключений
+        from modules.menu import DeployStandMenu
+        menu = DeployStandMenu()
 
-        # Создание менеджера конфигурации
-        config_manager = ConfigManager()
+        # Запускаем мастер выбора/создания сервера
+        server_config = await menu.run_server_selection_wizard()
 
-        # Создание кеш менеджера
-        cache_manager = CacheManager()
+        if not server_config:
+            logger.error("Не удалось получить конфигурацию сервера")
+            print("❌ Не удалось настроить подключение к серверу Proxmox")
+            return
 
-        # Создание сборщика метрик
-        metrics_collector = MetricsCollector()
+        # Объединяем конфигурацию из файла с переменными окружения
+        config = {
+            'host': os.getenv('PROXMOX_HOST', server_config.get('host', 'localhost')),
+            'user': os.getenv('PROXMOX_USER', server_config.get('user', 'root@pam')),
+            'password': os.getenv('PROXMOX_PASSWORD', server_config.get('password', '')),
+            'token_name': server_config.get('token_name', ''),
+            'token_value': server_config.get('token_value', ''),
+            'verify_ssl': os.getenv('PROXMOX_VERIFY_SSL', str(server_config.get('verify_ssl', False))).lower() == 'true',
+            'port': server_config.get('port', 8006),
+            'server_name': server_config.get('name', 'Без имени'),
+            'server_description': server_config.get('description', '')
+        }
 
-        # Регистрация модулей в фабрике
-        logger.info("🔧 Регистрация модулей...")
+        logger.info(f"Используется сервер: {server_config.get('name', 'Без имени')} - {server_config.get('host')}")
 
-        # Импорт и регистрация модулей развертывания
+        # Проверяем подключение к Proxmox перед запуском меню
+        print("🔧 Проверка подключения к Proxmox...")
         try:
-            from core.modules.deployment.basic_deployer import BasicDeployer
-            from core.modules.deployment.advanced_deployer import AdvancedDeployer
-            from core.modules.deployment.local_deployer import LocalDeployer
-            from core.modules.deployment.remote_deployer import RemoteDeployer
-            from core.modules.deployment.balanced_deployer import BalancedDeployer
-            from core.modules.deployment.smart_deployer import SmartDeployer
-            module_factory.register_deployment_module("basic", BasicDeployer)
-            module_factory.register_deployment_module("advanced", AdvancedDeployer)
-            module_factory.register_deployment_module("local", LocalDeployer)
-            module_factory.register_deployment_module("remote", RemoteDeployer)
-            module_factory.register_deployment_module("balanced", BalancedDeployer)
-            module_factory.register_deployment_module("smart", SmartDeployer)
-            logger.info("✅ Модули развертывания зарегистрированы")
-        except ImportError as e:
-            logger.warning(f"⚠️ Не удалось зарегистрировать модули развертывания: {e}")
+            test_client = create_proxmox_client(config)
+            if test_client.connect():
+                print("✅ Подключение к Proxmox успешно")
+                test_client.disconnect()  # Закрываем тестовое подключение
+            else:
+                print("❌ Не удалось подключиться к Proxmox")
+                print("Проверьте настройки подключения")
+                return
+        except Exception as e:
+            logger.error(f"Ошибка тестирования подключения: {e}")
+            print(f"❌ Ошибка подключения: {e}")
+            return
 
-        # Импорт и регистрация модулей балансировки
-        try:
-            from core.modules.balancing.simple_balancer import SimpleBalancer
-            from core.modules.balancing.smart_balancer import SmartBalancer
-            module_factory.register_balancing_module("simple", SimpleBalancer)
-            module_factory.register_balancing_module("smart", SmartBalancer)
-            logger.info("✅ Модули балансировки зарегистрированы")
-        except ImportError as e:
-            logger.warning(f"⚠️ Не удалось зарегистрировать модули балансировки: {e}")
+        # Запуск модуля меню
+        await run_menu(config)
 
-        # Импорт и регистрация модулей шаблонов
-        try:
-            from core.modules.templates.local_templates import LocalTemplateManager
-            from core.modules.templates.migration_templates import MigrationTemplateManager
-            module_factory.register_template_module("local", LocalTemplateManager)
-            module_factory.register_template_module("migration", MigrationTemplateManager)
-            logger.info("✅ Модули шаблонов зарегистрированы")
-        except ImportError as e:
-            logger.warning(f"⚠️ Не удалось зарегистрировать модули шаблонов: {e}")
-
-        # Импорт и регистрация модулей сети
-        try:
-            from core.modules.network.bridge_manager import BridgeManager
-            module_factory.register_network_module("bridge", BridgeManager)
-            logger.info("✅ Модули сети зарегистрированы")
-        except ImportError as e:
-            logger.warning(f"⚠️ Не удалось зарегистрировать модули сети: {e}")
-
-        # Создание главного меню
-        logger.info("🎛️ Создание главного меню...")
-        main_menu = MainMenu(
-            module_factory=module_factory,
-            config_manager=config_manager,
-            logger_instance=logger,
-            cache=cache_manager,
-            metrics=metrics_collector
-        )
-
-        # Запуск главного меню
-        logger.info("🚀 Запуск главного меню...")
-        print("🚀 Добро пожаловать в Deploy-Stand!")
-        print("=" * 50)
-
-        main_menu.show()
-
-        logger.info("👋 Завершение работы приложения")
-        print("\n👋 До свидания!")
+        logger.info("Приложение завершено успешно")
 
     except KeyboardInterrupt:
-        print("\n\n👋 Приложение прервано пользователем")
-        sys.exit(0)
+        logger.info("Получен сигнал завершения")
     except Exception as e:
-        print(f"❌ Критическая ошибка: {e}")
-        logging.error(f"Критическая ошибка в main(): {e}", exc_info=True)
-        sys.exit(1)
+        logger.error(f"Ошибка при запуске приложения: {e}")
+        raise
 
 
 if __name__ == "__main__":
-    main()
+    # Запуск приложения
+    asyncio.run(main())
