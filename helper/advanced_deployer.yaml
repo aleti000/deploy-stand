@@ -1,0 +1,30 @@
+core/modules/deployment/advanced_deployer: Продвинутый развертыватель с балансировкой, оптимизацией шаблонов и параллельной обработкой
+  - deploy_configuration: Основная функция продвинутого развертывания с оптимизацией
+    - validate_config: Валидирует конфигурацию перед развертыванием
+      - _validate_machine_config: Валидирует конфигурацию каждой машины
+    - get_nodes (core.proxmox.proxmox_client.ProxmoxClient.get_nodes): Получает список доступных нод
+    - _calculate_distribution: Определяет распределение пользователей по нодам на основе стратегии
+      - distribute_deployment (balancing_interface.distribute_deployment): Использует балансировщик для распределения
+    - _prepare_all_templates: Подготавливает шаблоны для всех целевых нод
+      - prepare_templates_for_target_node (template_interface.prepare_templates_for_target_node): Подготавливает шаблоны для конкретной ноды
+      - get_template_mapping (template_interface.get_template_mapping): Получает mapping готовых шаблонов
+    - _deploy_parallel: Развертывает ВМ параллельно по нодам
+      - _deploy_for_node: Развертывает для пользователей на конкретной ноде
+        - _create_user_and_pool: Создает пользователя и пул с правами
+          - create_user (core.proxmox.proxmox_client.ProxmoxClient.create_user): Создает пользователя в Proxmox
+          - create_pool (core.proxmox.proxmox_client.ProxmoxClient.create_pool): Создает пул
+          - set_pool_permissions (core.proxmox.proxmox_client.ProxmoxClient.set_pool_permissions): Устанавливает права пользователя на пул
+          - _cleanup_user: Очищает пользователя при неудаче создания пула
+          - _cleanup_user_and_pool: Очищает пользователя и пул при неудаче установки прав
+        - _create_machine_optimized: Создает виртуальную машину с клонированием и настройкой сети
+          - get_next_vmid (core.proxmox.proxmox_client.ProxmoxClient.get_next_vmid): Получает следующий VMID
+          - clone_vm (core.proxmox.proxmox_client.ProxmoxClient.clone_vm): Клонирует ВМ из шаблона
+          - wait_for_task (core.proxmox.proxmox_client.ProxmoxClient.wait_for_task): Ждет завершения клонирования
+          - _configure_machine_network_optimized: Настраивает сеть ВМ с выделением bridge'ов
+            - allocate_bridge (network_interface.allocate_bridge): Выделяет bridge для ноды
+            - configure_vm_network (core.proxmox.proxmox_client.ProxmoxClient.configure_vm_network): Применяет сетевую конфигурацию к ВМ
+  - _generate_password: Генерирует пароль для обучающих стендов (локальная генерация)
+  - _generate_mac_address: Генерирует MAC адрес для сети (локальная генерация)
+  - _cleanup_user: Очищает пользователя при ошибках (заглушка)
+  - _cleanup_user_and_pool: Очищает пользователя и пул при ошибках (заглушка)
+  - get_deployment_status: Возвращает статус развертывания (заглушка)

@@ -1,0 +1,625 @@
+main: точка входа в приложение, инициализирует основные компоненты (ModuleFactory, ConfigManager, меню) и запускает главный цикл программы
+  - main: Главная функция приложения, инициализирует и запускает систему Deploy-Stand
+  - ModuleFactory(core.module_factory)
+  - ConfigManager(core.config.config_manager)
+  - DependencyConfigurator(core.config.dependency_configurator)
+  - MainMenu(ui.cli.menu_system)
+  - setup_logging(utils.logging.logger)
+  - CacheManager(utils.caching.cache_manager)
+  - MetricsCollector(utils.monitoring.metrics)
+
+core.module_factory: фабрика для создания экземпляров модулей развертывания, балансировки, сетей и шаблонов с автоматической регистрацией и dependency injection
+  - ModuleFactory /main, ui.cli.menu_system/: Фабрика для создания и управления модулями с dependency injection
+  - _register_available_modules: Автоматическая регистрация доступных модулей
+  - _auto_register_deployment_modules: Регистрация модулей развертывания
+  - _auto_register_balancing_modules: Регистрация модулей балансировки
+  - _auto_register_network_modules: Регистрация сетевых модулей
+  - _auto_register_template_modules: Регистрация модулей шаблонов
+  - _import_module: Динамический импорт модуля по пути
+  - register_deployment_module: Зарегистрировать модуль развертывания
+  - register_balancing_module: Зарегистрировать модуль балансировки
+  - register_template_module: Зарегистрировать модуль шаблонов
+  - register_network_module: Зарегистрировать сетевой модуль
+  - create_deployment_module: Создать модуль развертывания
+  - create_balancing_module: Создать модуль балансировки
+  - create_template_module: Создать модуль шаблонов
+  - create_network_module: Создать сетевой модуль
+  - list_available_modules: Получить список доступных модулей
+  - DeploymentInterface(core.interfaces.deployment_interface)
+  - BalancingInterface(core.interfaces.balancing_interface)
+  - TemplateInterface(core.interfaces.template_interface)
+  - NetworkInterface(core.interfaces.network_interface)
+  - ConfigManager(core.config.config_manager)
+  - DependencyConfigurator(core.config.dependency_configurator)
+
+core.deployment_distributor: вспомогательный модуль для распределения задач развертывания по нодам кластера (пока не используется в текущей реализации)
+  - DeploymentDistributor: Распределитель задач развертывания по нодам кластера
+  - distribute_deployment: Распределить пользователей по нодам round-robin
+  - analyze_node_load: Проанализировать загруженность нод
+  - select_optimal_node: Выбрать оптимальную ноду для развертывания
+  - get_distribution_summary: Получить сводку распределения
+  - ProxmoxClient(core.proxmox.proxmox_client)
+
+core.config.config_manager: управление всеми конфигурациями системы (deployment, users, connections), включая валидацию и хранение в YAML формате
+  - _ensure_directories: Создать необходимые директории
+  - load_deployment_config: Загрузить конфигурацию развертывания
+  - save_deployment_config: Сохранить конфигурацию развертывания
+  - load_users: Загрузить список пользователей
+  - save_users: Сохранить список пользователей
+  - list_user_lists: Получить список пользовательских списков
+  - delete_user_list: Удалить список пользователей
+  - load_connections_config: Загрузить конфигурацию подключений
+  - save_connections_config: Сохранить конфигурацию подключений
+  - list_configs: Получить список конфигураций
+  - load_config: Загрузить именованную конфигурацию
+  - save_config: Сохранить именованную конфигурацию
+  - delete_config: Удалить конфигурацию
+  - create_named_config: Создать именованную конфигурацию
+  - _load_yaml_file: Загрузить YAML файл
+  - _save_yaml_file: Сохранить данные в YAML файл
+  - validate_deployment_config: Валидация конфигурации развертывания
+  - _validate_machine_config: Валидация конфигурации одной машины
+  - ConfigValidator(core.config.validators)
+
+core.config.connection_manager: управление сохраненными конфигурациями подключений к Proxmox серверам (создание, тестирование, выбор)
+  - ConnectionManager: Менеджер конфигураций подключений к Proxmox
+  - create_connection_config: Создать конфигурацию подключения
+  - delete_connection_config: Удалить конфигурацию подключения
+  - get_connection_config: Получить конфигурацию подключения
+  - list_connection_configs: Получить список конфигураций подключений
+  - test_connection_config: Тестировать конфигурацию подключения
+  - update_connection_config: Обновить конфигурацию подключения
+  - get_default_connection: Получить подключение по умолчанию
+  - set_default_connection: Установить подключение по умолчанию
+  - ConfigManager(core.config.config_manager)
+
+core.config.dependency_configurator: система dependency injection для управления зависимостями между компонентами системы
+  - DependencyContainer: Контейнер зависимостей для dependency injection
+  - register: Зарегистрировать зависимость
+  - resolve: Разрешить зависимость
+  - DependencyConfigurator: Конфигуратор зависимостей системы
+  - configure_dependencies: Сконфигурировать все зависимости
+  - _register_core_services: Зарегистрировать базовые сервисы
+  - _register_utility_services: Зарегистрировать утилитарные сервисы
+  - _register_manager_services: Зарегистрировать менеджеры
+  - _register_factory_services: Зарегистрировать фабрики
+  - create_deployment_module_dependencies: Создать зависимости модуля развертывания
+  - create_balancing_module_dependencies: Создать зависимости модуля балансировки
+  - validate_dependencies: Валидировать зависимости
+  - get_dependency_graph: Получить граф зависимостей
+  - ConfigManager(core.config.config_manager)
+
+core.config.validators: валидация конфигурационных файлов (deployment, users, connections) на корректность данных
+  - ConfigValidator: Валидатор конфигураций
+  - validate_deployment_config: Валидировать конфигурацию развертывания
+  - _validate_machine_config: Валидировать конфигурацию машины
+  - validate_users_list: Валидировать список пользователей
+  - validate_connection_config: Валидировать конфигурацию подключения
+
+core.interfaces.balancing_interface: абстрактные интерфейсы для модулей балансировки нагрузки между нодами кластера
+  - BalancingInterface
+  - distribute_deployment
+  - analyze_node_load
+  - optimize_distribution
+
+core.interfaces.deployment_interface: абстрактные интерфейсы для различных стратегий развертывания виртуальных машин
+  - DeploymentInterface
+  - deploy_configuration
+  - validate_config
+  - get_deployment_status
+
+core.interfaces.network_interface: абстрактные интерфейсы для управления сетевыми настройками виртуальных машин
+  - NetworkInterface
+  - configure_network
+  - allocate_bridge
+  - cleanup_unused_bridges
+
+core.interfaces.template_interface: абстрактные интерфейсы для управления шаблонами виртуальных машин
+  - TemplateInterface
+  - prepare_templates_for_target_node
+  - create_local_template
+  - get_template_mapping
+
+core.modules.vm_operations: базовые операции с виртуальными машинами (создание, управление, удаление)
+  - VMOperations: Операции с виртуальными машинами
+  - create_user_vms: Создать виртуальные машины для пользователей
+  - _create_single_vm: Создать одну виртуальную машину
+  - _configure_vm_network: Настроить сеть виртуальной машины
+  - _generate_mac_address: Сгенерировать MAC адрес
+  - check_existing_vms_in_pools: Проверить существующие ВМ в пулах
+  - _pool_has_vms: Проверить имеет ли пул виртуальные машины
+  - stop_user_vms: Остановить виртуальные машины пользователя
+  - delete_user_vms: Удалить виртуальные машины пользователя
+  - get_vm_info: Получить информацию о виртуальной машине
+  - list_user_vms: Получить список виртуальных машин пользователя
+  - ProxmoxClient(core.proxmox.proxmox_client)
+  - BridgeManager(core.modules.network.bridge_manager)
+
+
+core.modules.balancing.simple_balancer: простая балансировка нагрузки по алгоритму round-robin, равномерное распределение по нодам
+  - SimpleBalancer: Простая балансировка нагрузки round-robin
+  - distribute_deployment: Распределить развертывание простым способом
+  - analyze_node_load: Проанализировать нагрузку на ноды
+  - optimize_distribution: Оптимизировать текущее распределение
+  - BalancingInterface(core.interfaces.balancing_interface)
+  - ProxmoxClient(core.proxmox.proxmox_client)
+
+core.modules.balancing.smart_balancer: умная балансировка нагрузки с анализом ресурсов, оптимизацией размещения и учетом миграции шаблонов
+  - SmartBalancer: Интеллектуальная балансировка с учетом нагрузки
+  - distribute_deployment: Распределить развертывание интеллектуально
+  - analyze_node_load: Проанализировать нагрузку на ноды
+  - optimize_distribution: Оптимизировать распределение с учетом шаблонов
+  - _calculate_node_weights: Рассчитать веса нод
+  - _estimate_user_resource_demand: Оценить потребность пользователя в ресурсах
+  - _intelligent_distribution: Интеллектуальное распределение
+  - _select_best_node_for_user: Выбрать лучшую ноду для пользователя
+  - _calculate_user_node_compatibility: Рассчитать совместимость пользователь-нода
+  - _optimize_for_template_migration: Оптимизировать для миграции шаблонов
+  - _analyze_template_requirements: Проанализировать требования шаблонов
+  - _calculate_template_efficiency: Рассчитать эффективность шаблонов
+  - _optimize_user_placement: Оптимизировать размещение пользователей
+  - _fallback_distribution: Запасное распределение
+  - BalancingInterface(core.interfaces.balancing_interface)
+  - ProxmoxClient(core.proxmox.proxmox_client)
+  - PerformanceMetrics(utils.monitoring.metrics)
+  - CacheManager(utils.caching.cache_manager)
+
+core.modules.common.config_validator: расширенная валидация конфигураций развертывания с подробными отчетами и обработкой ошибок
+  - ValidationResult
+  - add_error
+  - add_warning
+  - ConfigValidator
+  - validate_deployment_config
+  - validate_machine_config
+  - validate_network_config
+  - validate_user_list
+  - _validate_config_level_constraints
+  - get_config_summary
+  - DeploymentUtils(core.modules.common.deployment_utils)
+
+core.modules.common.deployment_utils: утилitarные функции для развертывания (генерация паролей, MAC адресов, валидация имен, форматирование отчетов)
+  - DeploymentUtils /core.modules.common.config_validator, core.modules.deployment.balanced_deployer, core.modules.deployment.local_deployer, core.modules.deployment.remote_deployer, core.modules.network.network_configurator, core.modules.users.user_manager, core.modules.deployment.vm_factory, core.modules.templates.template_manager, core.config.dependency_configurator/:
+  - generate_password
+  - generate_mac_address
+  - generate_ecorouter_mac
+  - extract_pool_name
+  - extract_user_realm
+  - build_user_name
+  - validate_machine_name
+  - sanitize_machine_name
+  - get_next_vmid
+  - wait_for_task_completion
+  - cleanup_on_failure
+  - reload_node_network
+  - format_deployment_summary
+
+core.modules.deployment.advanced_deployer: продвинутый развертыватель с параллельным выполнением и оптимизированными настройками
+  - AdvancedDeployer
+  - deploy_configuration
+  - _calculate_distribution
+  - _prepare_all_templates
+  - _deploy_parallel
+  - _deploy_for_node
+  - _create_user_and_pool
+  - _create_machine_optimized
+  - _configure_machine_network_optimized
+  - _generate_password
+  - _generate_mac_address
+  - _cleanup_user
+  - _cleanup_user_and_pool
+  - validate_config
+  - _validate_machine_config
+  - get_deployment_status
+  - DeploymentInterface(core.interfaces.deployment_interface)
+  - ProxmoxClient(core.proxmox.proxmox_client)
+  - BalancingInterface(core.interfaces.balancing_interface)
+  - TemplateInterface(core.interfaces.template_interface)
+  - NetworkInterface(core.interfaces.network_interface)
+
+core.modules.deployment.balanced_deployer: универсальный развертыватель с выбором стратегии балансировки и поддержкой смарт-развертывания
+  - BalancedDeployer
+  - deploy_configuration
+  - _determine_deployment_strategy
+  - validate_config
+  - _reload_affected_nodes_network
+  - get_deployment_status
+  - BasicDeployer(core.modules.deployment.basic_deployer)
+  - ProxmoxClient(core.proxmox.proxmox_client)
+  - BalancingInterface(core.interfaces.balancing_interface)
+  - ConfigValidator(core.modules.common.config_validator)
+  - DeploymentUtils(core.modules.common.deployment_utils)
+  - UserManager(core.modules.users.user_manager)
+  - TemplateManager(core.modules.templates.template_manager)
+  - VMFactory(core.modules.deployment.vm_factory)
+  - SmartBalancer(core.modules.balancing.smart_balancer)
+
+core.modules.deployment.basic_deployer: базовый развертыватель виртуальных машин - создает пользователей, машины и настраивает их сеть
+  - BasicDeployer
+  - deploy_configuration
+  - _deploy_for_user
+  - _create_user_and_pool
+  - _create_machine
+  - _configure_machine_network
+  - _generate_password
+  - _generate_mac_address
+  - _cleanup_user
+  - _cleanup_user_and_pool
+  - _cleanup_pool
+  - _check_existing_user_vms
+  - validate_config
+  - _validate_machine_config
+  - get_deployment_status
+  - DeploymentInterface(core.interfaces.deployment_interface)
+  - ProxmoxClient(core.proxmox.proxmox_client)
+
+core.modules.deployment.local_deployer: локальный развертыватель виртуальных машин, который размещает все ВМ пользователя на одной локальной ноде
+  - LocalDeployer
+  - deploy_configuration
+  - _deploy_for_user
+  - validate_config
+  - _get_user_nodes
+  - _reload_affected_nodes_network
+  - get_deployment_status
+  - BasicDeployer(core.modules.deployment.basic_deployer)
+  - ProxmoxClient(core.proxmox.proxmox_client)
+  - ConfigValidator(core.modules.common.config_validator)
+  - DeploymentUtils(core.modules.common.deployment_utils)
+  - UserManager(core.modules.users.user_manager)
+  - VMFactory(core.modules.deployment.vm_factory)
+
+core.modules.deployment.remote_deployer: стратегия развёртывания, которая отвечает загружку шаблонов на нужные ноды и последующее развёртывание по ним
+  - RemoteDeployer
+  - deploy_configuration
+  - _prepare_templates_for_target_node
+  - _prepare_single_template
+  - _find_existing_template_on_node
+  - _deploy_for_user
+  - validate_config
+  - _reload_affected_nodes_network
+  - get_deployment_status
+  - BasicDeployer(core.modules.deployment.basic_deployer)
+  - ProxmoxClient(core.proxmox.proxmox_client)
+  - ConfigValidator(core.modules.common.config_validator)
+  - DeploymentUtils(core.modules.common.deployment_utils)
+  - UserManager(core.modules.users.user_manager)
+  - TemplateManager(core.modules.templates.template_manager)
+  - VMFactory(core.modules.deployment.vm_factory)
+
+core.modules.deployment.smart_deployer: интеллектуальный развертыватель с параллельным выполнением и использованием SmartBalancer для оптимального размещения
+  - SmartDeployer
+  - deploy_configuration
+  - _get_node_loads
+  - _prepare_templates_for_all_nodes
+  - _prepare_templates_for_target_node
+  - _prepare_single_template
+  - _find_existing_template_on_node
+  - _deploy_parallel
+  - _deploy_for_node
+  - _create_machine_smart
+  - _create_user_and_pool
+  - _configure_machine_network
+  - _generate_password
+  - _generate_mac_address
+  - _cleanup_user
+  - _cleanup_user_and_pool
+  - validate_config
+  - _validate_machine_config
+  - get_deployment_status
+  - BasicDeployer(core.modules.deployment.basic_deployer)
+  - SmartBalancer(core.modules.balancing.smart_balancer)
+  - BalancingInterface(core.interfaces.balancing_interface)
+  - ProxmoxClient(core.proxmox.proxmox_client)
+
+core.modules.deployment.vm_factory: фабрика для управления виртуальными машинами (создание, удаление, проверка доступности VMID)
+  - VMFactory
+  - create_machine_local
+  - create_machine_remote
+  - _machine_exists_in_pool
+  - check_vmid_available
+  - get_available_vmid
+  - delete_machine
+  - get_machine_info
+  - list_machines_in_pool
+  - validate_machine_config
+  - estimate_machine_resources
+  - ProxmoxClient(core.proxmox.proxmox_client)
+  - DeploymentUtils(core.modules.common.deployment_utils)
+  - UserManager(core.modules.users.user_manager)
+  - NetworkConfigurator(core.modules.network.network_configurator)
+  - ConfigValidator(core.modules.common.config_validator)
+
+core.modules.network.bridge_manager: управление сетевыми мостами Proxmox (создание, распределение, очистка неиспользуемых bridge-ей)
+  - BridgeManager
+  - configure_network
+  - allocate_bridge
+  - _allocate_new_bridge_for_alias
+  - cleanup_unused_bridges
+  - _prepare_bridges
+  - _prepare_network_configs
+  - _find_next_available_bridge
+  - _generate_mac_address
+  - _generate_ecorouter_mac
+  - NetworkInterface(core.interfaces.network_interface)
+  - ProxmoxClient(core.proxmox.proxmox_client)
+
+core.modules.network.network_configurator: конфигуратор сетевых настроек для виртуальных машин (подготовка bridge-ей, настройка сетевых интерфейсов)
+  - NetworkConfigurator
+  - configure_machine_network
+  - _prepare_bridges
+  - _allocate_bridge
+  - _prepare_network_configs
+  - validate_network_config
+  - get_network_statistics
+  - cleanup_unused_bridges
+  - ProxmoxClient(core.proxmox.proxmox_client)
+  - DeploymentUtils(core.modules.common.deployment_utils)
+  - BridgeManager(core.modules.network.bridge_manager)
+
+core.modules.templates.local_templates: менеджер локальных шаблонов с кешированием и анализом доступности шаблонов на нодах
+  - LocalTemplateManager
+  - prepare_templates_for_target_node
+  - create_local_template
+  - get_template_mapping
+  - _load_local_templates_from_config
+  - _analyze_template_requirements
+  - _is_template_available
+  - _check_migration_resources
+  - _check_template_cache
+  - _save_template_mapping
+  - convert_to_template
+  - migrate_vm
+  - TemplateInterface(core.interfaces.template_interface)
+  - ProxmoxClient(core.proxmox.proxmox_client)
+  - CacheManager(utils.caching.cache_manager)
+
+core.modules.templates.migration_templates: менеджер шаблонов для миграции с кешированием истории миграций и анализом feasibility миграции
+  - MigrationTemplateManager
+  - prepare_templates_for_target_node
+  - create_local_template
+  - get_template_mapping
+  - _load_migration_cache
+  - _save_migration_cache
+  - _analyze_template_requirements
+  - _is_template_available
+  - _check_migration_feasibility
+  - _check_migration_cache
+  - get_migration_history
+  - cleanup_old_migrations
+  - TemplateInterface(core.interfaces.template_interface)
+  - ProxmoxClient(core.proxmox.proxmox_client)
+  - CacheManager(utils.caching.cache_manager)
+
+core.modules.templates.template_manager: центральный менеджер шаблонов с mapping и поддержкой статистики и очистки неиспользуемых шаблонов
+  - TemplateManager
+  - prepare_templates_for_target_node
+  - prepare_single_template
+  - find_existing_template_on_node
+  - load_template_mapper
+  - save_template_mapper
+  - update_template_mapper
+  - cleanup_unused_templates
+  - get_template_statistics
+  - _get_unique_templates
+  - validate_template_availability
+  - ProxmoxClient(core.proxmox.proxmox_client)
+  - DeploymentUtils(core.modules.common.deployment_utils)
+
+core.modules.users.user_manager: менеджер пользователей и пулов с поддержкой permissions, аудита действий и batch операций
+  - UserManager
+  - create_user_and_pool
+  - delete_user_and_pool
+  - grant_vm_permissions
+  - check_user_exists
+  - check_pool_exists
+  - get_user_pools
+  - delete_user_resources_batch
+  - _delete_user_vms
+  - _cleanup_user
+  - _cleanup_user_and_pool
+  - validate_user_permissions
+  - get_user_vm_count
+  - list_user_resources
+  - ProxmoxClient(core.proxmox.proxmox_client)
+  - DeploymentUtils(core.modules.common.deployment_utils)
+
+core.proxmox.api_wrapper: обертка для высокоуровневых API операций Proxmox (статус кластера, batch-операции, миграции)
+  - ProxmoxAPIWrapper
+  - get_cluster_status
+  - get_storage_info
+  - get_node_cpu_usage
+  - get_node_memory_usage
+  - get_node_storage_available
+  - convert_to_template
+  - migrate_vm
+  - get_vm_info
+  - batch_clone_vms
+  - batch_configure_networks
+  - ProxmoxClient(core.proxmox.proxmox_client)
+
+core.proxmox.proxmox_client: основной клиент для взаимодействия с Proxmox API (подключение, управление ВМ, пользователями, хранилищами)
+  - ProxmoxClient
+  - _connect
+  - get_nodes
+  - get_next_vmid
+  - clone_vm
+  - wait_for_task
+  - delete_vm
+  - create_user
+  - create_pool
+  - set_pool_permissions
+  - get_vms_on_node
+  - get_vm_config
+  - configure_vm_network
+  - bridge_exists
+  - create_bridge
+  - delete_bridge
+  - list_bridges
+  - get_node_status
+  - convert_to_template
+  - migrate_vm
+  - bridge_in_use
+  - user_exists
+  - pool_exists
+  - get_pool_permissions
+  - get_pool_vms
+  - check_vm_network_config
+  - reload_node_network
+  - ProxmoxAPI(core.proxmox.api_wrapper)
+
+core.users.pool_manager: менеджер пулов Proxmox (создание, управление permissions, валидация и аудит)
+  - PoolManager
+  - create_pool
+  - delete_pool
+  - get_pool_resources
+  - add_vm_to_pool
+  - remove_vm_from_pool
+  - set_pool_permissions
+  - get_pool_permissions
+  - list_pools
+  - get_pool_info
+  - ProxmoxClient(core.proxmox.proxmox_client)
+
+core.users.user_manager: расширенный менеджер пользователей Proxmox с поддержкой расширенных операций и администрирования (того, что не хватает в UserManager)
+  - UserManager
+  - create_user_and_pool
+  - delete_user_resources_batch
+  - delete_user_resources
+  - _stop_pool_vms
+  - _clear_vm_networks
+  - _delete_pool_vms
+  - _verify_vms_deleted
+  - _delete_user_pool
+  - _delete_user
+  - _cleanup_user
+  - _cleanup_user_and_pool
+  - _generate_password
+  - get_user_pools
+  - get_pool_users
+  - _verify_vms_deleted_by_searching_nodes
+  - audit_user_actions
+  - ProxmoxClient(core.proxmox.proxmox_client)
+  - BridgeManager(core.modules.network.bridge_manager)
+
+ui.cli.menu_system: система консольного меню приложения с поддержкой всех операций (развертывание, управление пользователями, конфигурации)
+  - MainMenu
+  - show
+  - _handle_menu_choice
+  - _setup_proxmox_connection
+  - _create_new_connection
+  - _create_deployment_config
+  - _deploy_menu
+  - _manage_users_menu
+  - _delete_all_users_resources
+  - _manage_configs_menu
+  - _manage_connection_config_menu
+  - _delete_single_user_resources
+  - _create_config_from_template
+  - _create_custom_config
+  - _show_config_details
+  - _delete_config_interactive
+  - _create_and_save_connection
+  - _select_and_activate_connection
+  - _delete_saved_connection
+  - _ensure_proxmox_connection
+  - _get_current_connection_info
+  - _copy_config_interactive
+  - _load_last_used_config
+  - _load_users_from_file
+  - _create_machine_interactive
+  - _show_machines_in_config
+  - _manage_user_lists_menu
+  - _create_user_list_interactive
+  - _edit_user_list_interactive
+  - _show_all_user_lists
+  - _delete_user_list_interactive
+  - ModuleFactory(core.module_factory)
+  - ConfigManager(core.config.config_manager)
+  - ProxmoxClient(core.proxmox.proxmox_client)
+  - UserManager(core.modules.users.user_manager)
+
+ui.validators.input_validators: валидаторы для пользовательского ввода в CLI интерфейсе (проверка IP, портов, имен, форматов)
+  - InputValidator
+  - validate_user_input
+  - validate_users_list
+  - validate_user_format
+  - validate_numeric_input
+  - validate_choice_input
+  - validate_yes_no_input
+  - validate_ip_address
+  - validate_port
+  - validate_vmid
+  - validate_node_name
+  - validate_bridge_name
+  - validate_template_name
+  - validate_config_name
+  - validate_file_path
+  - sanitize_input
+  - get_input_with_validation
+
+utils.caching.cache_manager: менеджер кеширования данных (шаблоны, метрики узлов, статус распределения) с автоматической очисткой устаревших записей
+  - CacheManager
+  - get
+  - set
+  - delete
+  - clear
+  - cleanup_expired
+  - _is_expired
+  - get_stats
+  - _estimate_size_mb
+  - get_template_info
+  - set_template_info
+  - get_node_metrics
+  - set_node_metrics
+  - get_distribution_cache
+  - set_distribution_cache
+  - get_deployment_status
+  - set_deployment_status
+  - generate_cache_key
+  - get_or_compute
+
+utils.logging.logger: система логирования приложения с различными уровнями логирования и специализированными событиями
+  - Logger
+  - info
+  - success
+  - error
+  - warning
+  - debug
+  - critical
+  - deployment_start
+  - deployment_complete
+  - deployment_failed
+  - user_created
+  - vm_created
+  - template_migrated
+  - connection_established
+  - connection_failed
+  - config_loaded
+  - config_saved
+  - bridge_created
+  - bridge_deleted
+  - cleanup_started
+  - cleanup_completed
+  - performance_metric
+  - setup_logging
+
+utils.monitoring.metrics: система сбора метрик производительности приложения с анализом временных характеристик операций
+  - PerformanceMetrics
+  - start_operation
+  - end_operation
+  - record_api_call
+  - record_error
+  - record_cache_request
+  - update_cache_hit_rate
+  - get_average_deployment_time
+  - get_median_deployment_time
+  - get_min_deployment_time
+  - get_max_deployment_time
+  - get_deployment_time_percentile
+  - get_success_rate
+  - get_cache_hit_rate
+  - get_summary_stats
+  - _get_average_time
+  - reset_metrics
+  - export_metrics
+  - print_summary
+  - MetricsCollector

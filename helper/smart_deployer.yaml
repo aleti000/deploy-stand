@@ -1,0 +1,38 @@
+core/modules/deployment/smart_deployer: Умный развертыватель с балансировкой нагрузки и параллельной обработкой по нодам
+  - deploy_configuration: Основная функция умного развертывания с учетом нагрузки
+    - get_nodes (core.proxmox.proxmox_client.ProxmoxClient.get_nodes): Получает список доступных нод
+    - _get_node_loads: Определяет текущую нагрузку на нодах (CPU, память)
+      - get_node_status (core.proxmox.proxmox_client.ProxmoxClient.get_node_status): Получает статус ноды для расчета нагрузки
+    - distribute_deployment (balancing_interface.distribute_deployment): Распределяет пользователей по нодам с учетом нагрузки через умный балансировщик
+    - _prepare_templates_for_all_nodes: Подготавливает шаблоны для всех задействованных нод
+      - _prepare_templates_for_target_node: Подготавливает шаблоны для конкретной ноды с проверкой существующих
+        - _find_existing_template_on_node: Ищет уже подготовленные шаблоны на ноде
+          - get_vms_on_node (core.proxmox.proxmox_client.ProxmoxClient.get_vms_on_node): Получает список ВМ для поиска шаблонов
+        - _prepare_single_template: Создает новый шаблон через full clone -> convert -> migrate
+          - get_next_vmid (core.proxmox.proxmox_client.ProxmoxClient.get_next_vmid): Получает следующий VMID для клона
+          - clone_vm (core.proxmox.proxmox_client.ProxmoxClient.clone_vm): Выполняет full clone шаблона
+          - wait_for_task (core.proxmox.proxmox_client.ProxmoxClient.wait_for_task): Ждет завершения клонирования
+          - convert_to_template (core.proxmox.proxmox_client.ProxmoxClient.convert_to_template): Преобразует клон в шаблон
+          - migrate_vm (core.proxmox.proxmox_client.ProxmoxClient.migrate_vm): Миграирует шаблон на целевую ноду если ноды разные
+          - delete_vm (core.proxmox.proxmox_client.ProxmoxClient.delete_vm): Удаляет неудачный клон при ошибке
+    - _deploy_parallel: Развертывает ВМ параллельно по нодам с использованием подготовленных шаблонов
+      - _deploy_for_node: Развертывает для пользователей на конкретной ноде
+        - _create_user_and_pool: Создает пользователя и пул с правами доступа
+          - create_user (core.proxmox.proxmox_client.ProxmoxClient.create_user): Создает пользователя в Proxmox
+          - create_pool (core.proxmox.proxmox_client.ProxmoxClient.create_pool): Создает пул для пользователя
+          - set_pool_permissions (core.proxmox.proxmox_client.ProxmoxClient.set_pool_permissions): Устанавливает права пользователя на пул
+          - _cleanup_user: Очищает пользователя при неудаче создания пула (заглушка)
+          - _cleanup_user_and_pool: Очищает пользователя и пул при неудаче установки прав (заглушка)
+        - _create_machine_smart: Создает ВМ из локального шаблона с умной стратегией
+          - get_next_vmid (core.proxmox.proxmox_client.ProxmoxClient.get_next_vmid): Получает VMID для новой машины
+          - clone_vm (core.proxmox.proxmox_client.ProxmoxClient.clone_vm): Клонирует из локального шаблона
+          - wait_for_task (core.proxmox.proxmox_client.ProxmoxClient.wait_for_task): Ждет завершения клонирования
+          - _configure_machine_network: Настраивает сеть ВМ
+            - configure_vm_network (core.proxmox.proxmox_client.ProxmoxClient.configure_vm_network): Применяет сетевую конфигурацию
+    - Перезагрузка сетевых конфигураций: Для всех задействованных нод
+      - reload_node_network (core.proxmox.proxmox_client.ProxmoxClient.reload_node_network): Перезагружает сеть на ноде
+  - _generate_password: Генерирует случайный пароль для пользователей (локальная генерация)
+  - _generate_mac_address: Генерирует MAC адрес для сетевых интерфейсов (локальная генерация)
+  - validate_config: Валидирует конфигурацию развертывания
+    - _validate_machine_config: Валидирует конфигурацию отдельной машины
+  - get_deployment_status: Возвращает статус умного развертывания

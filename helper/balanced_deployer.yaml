@@ -1,0 +1,16 @@
+core/modules/deployment/balanced_deployer: Сбалансированный развертыватель с равномерным распределением пользователей по нодам
+  - deploy_configuration: Основная функция сбалансированного развертывания
+    - validate_deployment_config (core.modules.common.config_validator.ConfigValidator.validate_deployment_config): Валидирует конфигурацию развертывания
+    - get_nodes (core.proxmox.proxmox_client.ProxmoxClient.get_nodes): Получает список доступных нод
+    - distribute_deployment (balancing_interface.distribute_deployment): Распределяет пользователей по нодам через балансировщик
+    - _determine_deployment_strategy: Определяет стратегию развертывания для пользователя (local/remote)
+    - _deploy_for_user_local: Локальное развертывание если шаблон на целевой ноде
+      - переиспользует _deploy_for_user из BasicDeployer или локальную логику
+    - _deploy_for_user_remote: Удаленное развертывание с подготовкой шаблонов
+      - prepare_templates_for_target_node (core.modules.templates.template_manager.TemplateManager.prepare_templates_for_target_node): Подготавливает шаблоны для целевой ноды
+      - и далее создание пользователей и машин через VMFactory/Link
+    - _reload_affected_nodes_network: Перезагружает сети на задействованных нодах
+      - reload_node_network (core.proxmox.proxmox_client.ProxmoxClient.reload_node_network): Перезагружает сеть на ноде
+  - _determine_deployment_strategy: Решает где развертывать - локально или удаленно на основе template_node
+  - validate_config: Валидирует конфигурацию с проверкой доступности нод
+  - get_deployment_status: Возвращает статус сбалансированного развертывания

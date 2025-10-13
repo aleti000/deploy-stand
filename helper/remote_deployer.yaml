@@ -1,0 +1,30 @@
+core/modules/deployment/remote_deployer: Удаленный развертыватель с подготовкой шаблонов (full clone -> convert -> migrate)
+  - deploy_configuration: Основная функция удаленного развертывания
+    - validate_deployment_config (core.modules.common.config_validator.ConfigValidator.validate_deployment_config): Валидирует конфигурацию
+    - get_nodes (core.proxmox.proxmox_client.ProxmoxClient.get_nodes): Получает доступные ноды
+    - prepare_templates_for_target_node (core.modules.templates.template_manager.TemplateManager.prepare_templates_for_target_node): Подготавливает шаблоны для целевой ноды через TemplateManager
+    - _deploy_for_user: Развертывает для одного пользователя с использованием готовых шаблонов
+      - check_user_exists (core.modules.users.user_manager.UserManager.check_user_exists): Проверяет существование пользователя
+      - generate_password (core.modules.common.deployment_utils.DeploymentUtils.generate_password): Генерирует пароль
+      - create_user_and_pool (core.modules.users.user_manager.UserManager.create_user_and_pool): Создает пользователя и пул
+      - extract_pool_name (core.modules.common.deployment_utils.DeploymentUtils.extract_pool_name): Извлекает имя пула
+      - create_machine_remote (core.modules.deployment.vm_factory.VMFactory.create_machine_remote): Создает ВМ на удаленной ноде с использованием template_mapping
+    - _reload_affected_nodes_network: Перезагружает сеть на задействованных нодах
+      - reload_node_network (core.proxmox.proxmox_client.ProxmoxClient.reload_node_network): Перезагружает сетевую конфигурацию ноды
+  - _prepare_templates_for_target_node: Подготавливает уникальные шаблоны для целевой ноды
+    - _find_existing_template_on_node: Ищет существующий подготовленный шаблон на ноде
+      - get_vms_on_node (core.proxmox.proxmox_client.ProxmoxClient.get_vms_on_node): Получает ВМ на ноде для поиска шаблонов
+      - _load_mapper_template: Загружает данные mapper_template из файла
+      - _save_mapper_template: Сохраняет обновленные данные в mapper_template
+    - _prepare_single_template: Подготавливает один шаблон для ноды
+      - get_next_vmid (core.proxmox.proxmox_client.ProxmoxClient.get_next_vmid): Получает следующий доступный VMID
+      - clone_vm (core.proxmox.proxmox_client.ProxmoxClient.clone_vm): Выполняет full clone шаблона на той же ноде
+      - wait_for_task (core.proxmox.proxmox_client.ProxmoxClient.wait_for_task): Ждет завершения операции клонирования
+      - convert_to_template (core.proxmox.proxmox_client.ProxmoxClient.convert_to_template): Преобразует клон в шаблон
+      - migrate_vm (core.proxmox.proxmox_client.ProxmoxClient.migrate_vm): Миграирует шаблон на целевую ноду если ноды разные
+      - _update_mapper_template: Обновляет mapper_template с информацией о новом шаблоне
+      - delete_vm (core.proxmox.proxmox_client.ProxmoxClient.delete_vm): Удаляет ВМ при ошибке подготовки (очистка)
+  - _load_mapper_template: Загружает YAML файл с mappings шаблонов из data/configs/mapper_template.yaml
+  - _save_mapper_template: Сохраняет mappings в YAML файл
+  - _update_mapper_template: Добавляет или обновляет запись в mapper_template
+  - get_deployment_status: Возвращает статус удаленного развертывания

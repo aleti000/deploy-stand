@@ -1,0 +1,12 @@
+core/modules/deployment/local_deployer: Модуль для локального развертывания виртуальных машин на ноде с шаблонами
+  - deploy_configuration: Основная функция развертывания, эквивалентна _deploy для стратегии local_deploy - вызывает валидацию, развертывание для пользователей и перезагрузку сетей
+    - validate_deployment_config (core.modules.common.config_validator.ConfigValidator.validate_deployment_config): Валидирует конфигурацию развертывания на корректность данных
+    - _deploy_for_user: Функция развертывания для одного пользователя - проверяет существование, создает пользователя и пул, развертывает ВМ
+      - check_user_exists (core.modules.users.user_manager.UserManager.check_user_exists): Проверяет, существует ли пользователь в системе Proxmox
+      - generate_password (core.modules.common.deployment_utils.DeploymentUtils.generate_password): Генерирует случайный пароль для пользователя
+      - create_user_and_pool (core.modules.users.user_manager.UserManager.create_user_and_pool): Создает пользователя и соответствующий пул в Proxmox
+      - extract_pool_name (core.modules.common.deployment_utils.DeploymentUtils.extract_pool_name): Извлекает имя пула на основе имени пользователя
+      - create_machine_local (core.modules.deployment.vm_factory.VMFactory.create_machine_local): Создает виртуальную машину локально на ноде
+    - _get_user_nodes: Определяет ноды, задействованные в развертывании пользователя
+    - _reload_affected_nodes_network: Перезагружает сетевые настройки на нодах после развертывания
+      - reload_node_network (core.proxmox.proxmox_client.ProxmoxClient.reload_node_network): Перезагружает сетевые настройки на указанной ноде 

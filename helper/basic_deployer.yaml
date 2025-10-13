@@ -1,0 +1,16 @@
+core/modules/deployment/basic_deployer: Базовый развертыватель виртуальных машин, создает пользователей, машины и настраивает сеть
+  - deploy_configuration: Основная функция развертывания базовой стратегии
+    - _deploy_for_user: Развертывает виртуальные машины для одного пользователя
+      - _create_user_and_pool: Создает пользователя и пул в виде if-else
+      - _create_machine: Создает базовую виртуальную машину
+        - _generate_password: Генерирует пароль для машины (local generation)
+        - _generate_mac_address: Генерирует MAC адрес для машины
+      - _configure_machine_network: Настраивает сеть для машины (inherited or called)
+    - validate_config: Валидирует конфигурацию развертывания
+      - _validate_machine_config: Валидирует конфигурацию одной машины
+  - get_deployment_status: Функция получения статуса развертывания
+  - _create_user_and_pool: Создает пользователя и пул через Proxmox API
+  - _create_machine: Базовое создание машины (клонирование шаблона)
+  - _configure_machine_network: Базовая настройка сети машины
+  - _generate_password: Локальная генерация пароля для ВМ
+  - _generate_mac_address: Генерация MAC адреса для сети

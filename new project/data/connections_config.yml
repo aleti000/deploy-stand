@@ -1,0 +1,5 @@
+pve:
+  host: 192.168.122.201:8006
+  password: toor
+  use_token: false
+  user: root@pam
