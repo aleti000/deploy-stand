@@ -75,14 +75,11 @@ class VMManager:
             True если удаление успешно
         """
         try:
-            success = self.proxmox.delete_vm(node, vmid)
-            if success:
-                logger.info(f"VM {vmid} удалена с ноды {node}")
-            else:
-                logger.error(f"Не удалось удалить VM {vmid} с ноды {node}")
-            return success
+            self.proxmox.api.nodes(node).qemu(vmid).delete()
+            logger.info(f"VM {vmid} удалена с ноды {node}")
+            return True
         except Exception as e:
-            logger.error(f"Ошибка удаления VM {vmid} на ноде {node}: {e}")
+            logger.error(f"Ошибка удаления VM {vmid}: {e}")
             return False
 
     def start_vm(self, node: str, vmid: int) -> bool:
@@ -97,12 +94,9 @@ class VMManager:
             True если запуск успешен
         """
         try:
-            success = self.proxmox.start_vm(node, vmid)
-            if success:
-                logger.info(f"VM {vmid} запущена на ноде {node}")
-            else:
-                logger.error(f"Не удалось запустить VM {vmid} на ноде {node}")
-            return success
+            self.proxmox.api.nodes(node).qemu(vmid).status.start.post()
+            logger.info(f"VM {vmid} запущена на ноде {node}")
+            return True
         except Exception as e:
             logger.error(f"Ошибка запуска VM {vmid} на ноде {node}: {e}")
             return False
@@ -119,12 +113,9 @@ class VMManager:
             True если остановка успешна
         """
         try:
-            success = self.proxmox.stop_vm(node, vmid)
-            if success:
-                logger.info(f"VM {vmid} остановлена на ноде {node}")
-            else:
-                logger.error(f"Не удалось остановить VM {vmid} на ноде {node}")
-            return success
+            self.proxmox.api.nodes(node).qemu(vmid).status.stop.post()
+            logger.info(f"VM {vmid} остановлена на ноде {node}")
+            return True
         except Exception as e:
             logger.error(f"Ошибка остановки VM {vmid} на ноде {node}: {e}")
             return False
@@ -141,10 +132,9 @@ class VMManager:
             Информация о VM или None если не найдена
         """
         try:
-            vm_info = self.proxmox.get_vm_info(node, vmid)
+            vm_info = self.proxmox.api.nodes(node).qemu(vmid).config.get()
             return vm_info
-        except Exception as e:
-            logger.error(f"Ошибка получения информации о VM {vmid} на ноде {node}: {e}")
+        except Exception:
             return None
 
     def list_user_vms(self, pool: str) -> List[Dict[str, Any]]:
@@ -181,26 +171,6 @@ class VMManager:
         except Exception:
             return True  # В случае ошибки считаем доступным
 
-    def get_vm_status(self, node: str, vmid: int) -> str:
-        """
-        Получить статус виртуальной машины
-
-        Args:
-            node: Нода размещения VM
-            vmid: VMID машины
-
-        Returns:
-            Статус VM ('running', 'stopped', etc.) или 'unknown'
-        """
-        try:
-            vm_info = self.get_vm_info(node, vmid)
-            if vm_info:
-                return vm_info.get('status', 'unknown')
-            return 'not_found'
-        except Exception as e:
-            logger.error(f"Ошибка получения статуса VM {vmid} на ноде {node}: {e}")
-            return 'unknown'
-
     def get_next_vmid(self) -> int:
         """
         Получить следующий доступный VMID
@@ -234,23 +204,3 @@ class VMManager:
             return 100
         except Exception:
             return 100
-
-    def get_vm_status(self, node: str, vmid: int) -> str:
-        """
-        Получить статус виртуальной машины
-
-        Args:
-            node: Нода размещения VM
-            vmid: VMID машины
-
-        Returns:
-            Статус VM ('running', 'stopped', etc.) или 'unknown'
-        """
-        try:
-            vm_info = self.get_vm_info(node, vmid)
-            if vm_info:
-                return vm_info.get('status', 'unknown')
-            return 'not_found'
-        except Exception as e:
-            logger.error(f"Ошибка получения статуса VM {vmid} на ноде {node}: {e}")
-            return 'unknown'

@@ -5,12 +5,12 @@ machines:
   networks:
   - bridge: vmbr0
   - bridge: hq
-  template_node: pve1
+  template_node: srv1
   template_vmid: 100
 - device_type: linux
   full_clone: false
   name: hq
   networks:
   - bridge: hq
-  template_node: pve1
+  template_node: srv1
   template_vmid: 100

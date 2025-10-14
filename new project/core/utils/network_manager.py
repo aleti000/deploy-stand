@@ -48,13 +48,19 @@ class NetworkManager:
             True если настройка успешна
         """
         try:
-            # Автоматически создать все необходимые bridge'ы
-            bridge_mapping = self._prepare_bridges_auto(node, networks, pool)
+            # Используем готовый bridge mapping из кэша пользователя
+            user_key = f"{node}:{pool}"
+            if hasattr(self, '_global_bridge_cache') and user_key in self._global_bridge_cache:
+                bridge_mapping = self._global_bridge_cache[user_key].get('bridge_mapping', {})
+                logger.info(f"Используем готовый bridge mapping для пользователя {pool}: {bridge_mapping}")
+            else:
+                # Fallback: создаем mapping заново
+                logger.warning(f"Bridge mapping не найден в кэше для пользователя {pool}, создаем заново")
+                bridge_mapping = self._prepare_bridges_auto(node, networks, pool)
 
             # Подготовить конфигурации интерфейсов
             network_configs = self._prepare_network_configs(networks, bridge_mapping, device_type)
 
-            # Реализуем настройку сети напрямую в NetworkManager
             # Пакетная настройка всех интерфейсов
             config_params = {}
             for net_id, net_config in network_configs.items():
@@ -270,34 +276,49 @@ class NetworkManager:
             Mapping bridge имен (одинаковые alias -> один и тот же bridge)
         """
         bridge_mapping = {}
-        alias_cache = {}  # Кэш для хранения выделенных bridge по alias
 
-        # Сначала собираем все уникальные alias
-        for network in networks:
-            bridge_name = network.get('bridge')
-            if bridge_name and not (bridge_name.startswith('vmbr') or bridge_name.isdigit()):
-                # Это alias - нужно выделить bridge
-                if bridge_name not in alias_cache:
-                    # Выделяем новый bridge для этого alias
-                    allocated_bridge = self._allocate_bridge_auto(node, bridge_name, pool)
-                    if not self.bridge_exists(node, allocated_bridge):
-                        logger.info(f"Автоматически создаем bridge {allocated_bridge} для alias '{bridge_name}' на ноде {node}")
-                        self.create_bridge(node, allocated_bridge)
-                    alias_cache[bridge_name] = allocated_bridge
+        # Глобальный кэш для всех пользователей и их alias
+        if not hasattr(self, '_global_bridge_cache'):
+            self._global_bridge_cache = {}
 
-        # Теперь заполняем mapping
+        # Создаем уникальный ключ для пользователя
+        user_key = f"{node}:{pool}"
+
+        if user_key not in self._global_bridge_cache:
+            self._global_bridge_cache[user_key] = {}
+
+        user_bridge_cache = self._global_bridge_cache[user_key]
+
+        # Обрабатываем каждую сеть
         for network in networks:
             bridge_name = network.get('bridge')
             if bridge_name:
-                if bridge_name.startswith('vmbr') or bridge_name.isdigit():
+                # Обработка зарезервированных bridge (в двойных звездочках)
+                if bridge_name.startswith('**'):
+                    actual_bridge = bridge_name.strip('*')
+                    if not self.bridge_exists(node, actual_bridge):
+                        logger.info(f"Создаем зарезервированный bridge {actual_bridge} на ноде {node}")
+                        self.create_bridge(node, actual_bridge)
+                    bridge_mapping[bridge_name] = actual_bridge
+                elif bridge_name.startswith('vmbr') or bridge_name.isdigit():
                     # Уже готовый bridge
                     if not self.bridge_exists(node, bridge_name):
                         logger.info(f"Автоматически создаем bridge {bridge_name} на ноде {node}")
                         self.create_bridge(node, bridge_name)
                     bridge_mapping[bridge_name] = bridge_name
                 else:
-                    # Alias - используем из кэша (одинаковый для одинаковых alias)
-                    bridge_mapping[bridge_name] = alias_cache[bridge_name]
+                    # Это alias - должен быть одинаковым для пользователя
+                    if bridge_name not in user_bridge_cache:
+                        # Выделяем новый bridge для этого alias пользователя
+                        allocated_bridge = self._allocate_bridge_auto(node, bridge_name, pool)
+                        if not self.bridge_exists(node, allocated_bridge):
+                            logger.info(f"Автоматически создаем bridge {allocated_bridge} для alias '{bridge_name}' пользователя {pool} на ноде {node}")
+                            self.create_bridge(node, allocated_bridge)
+                        user_bridge_cache[bridge_name] = allocated_bridge
+                        logger.info(f"Пользователь {pool}: alias '{bridge_name}' -> bridge '{allocated_bridge}' (сохранено в кэш)")
+
+                    # Используем bridge из кэша пользователя (одинаковый для одинаковых alias)
+                    bridge_mapping[bridge_name] = user_bridge_cache[bridge_name]
 
         return bridge_mapping
 

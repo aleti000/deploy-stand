@@ -46,39 +46,51 @@ class PoolManager:
             return user.split('@')[0]
         return user
 
-    def create_pool(self, pool_name: str, comment: str = "") -> bool:
+    def create_pool(self, poolid: str, comment: str = "") -> bool:
         """
         Создать пул
 
         Args:
-            pool_name: Имя пула
+            poolid: ID пула
             comment: Комментарий к пулу
 
         Returns:
-            True если пул создан успешно
+            True если создание успешно или пул уже существует
         """
         try:
-            success = self.proxmox.create_pool(pool_name, comment)
-            if success:
-                logger.info(f"✅ Пул {pool_name} создан")
-            else:
-                logger.error(f"Не удалось создать пул {pool_name}")
-            return success
+            # Сначала проверить существует ли пул
+            if self.pool_exists(poolid):
+                logger.info(f"Пул {poolid} уже существует")
+                return True
+
+            self.proxmox.api.pools.post(poolid=poolid, comment=comment)
+            logger.info(f"Пул {poolid} создан")
+            return True
+
         except Exception as e:
-            logger.error(f"Ошибка создания пула {pool_name}: {e}")
+            logger.error(f"Ошибка создания пула {poolid}: {e}")
+            # Если ошибка из-за того что пул уже существует - считаем успехом
+            if "already exists" in str(e) or "duplicate" in str(e).lower():
+                logger.info(f"Пул {poolid} уже существует (обработано как успех)")
+                return True
             return False
 
-    def delete_pool(self, pool_name: str) -> bool:
+    def pool_exists(self, poolid: str) -> bool:
         """
-        Удалить пул
+        Проверить существует ли пул
 
         Args:
-            pool_name: Имя пула для удаления
+            poolid: ID пула
 
         Returns:
-            True если пул удален успешно
+            True если пул существует
         """
-        return self._delete_pool_impl(pool_name)
+        try:
+            pools = self.proxmox.api.pools.get()
+            return any(pool.get('poolid') == poolid for pool in pools)
+        except Exception as e:
+            logger.error(f"Ошибка проверки существования пула {poolid}: {e}")
+            return False
 
     def get_pool_info(self, pool_name: str) -> Optional[Dict[str, Any]]:
         """
@@ -114,42 +126,35 @@ class PoolManager:
             logger.error(f"Ошибка получения списка пулов: {e}")
             return []
 
-    def check_pool_exists(self, pool_name: str) -> bool:
-        """
-        Проверить существование пула
 
-        Args:
-            pool_name: Имя пула для проверки
 
-        Returns:
-            True если пул существует
-        """
-        try:
-            return self.get_pool_info(pool_name) is not None
-        except Exception:
-            return False
-
-    def set_pool_permissions(self, user: str, pool_name: str, permissions: List[str]) -> bool:
+    def set_pool_permissions(self, userid: str, poolid: str, permissions: List[str]) -> bool:
         """
         Установить права пользователя на пул
 
         Args:
-            user: Имя пользователя
-            pool_name: Имя пула
+            userid: ID пользователя
+            poolid: ID пула
             permissions: Список прав для установки
 
         Returns:
             True если права установлены успешно
         """
         try:
-            success = self.proxmox.set_pool_permissions(user, pool_name, permissions)
-            if success:
-                logger.info(f"✅ Права пользователя {user} на пул {pool_name} установлены: {permissions}")
-            else:
-                logger.error(f"Не удалось установить права пользователя {user} на пул {pool_name}")
-            return success
+            for permission in permissions:
+                # Используем PUT /access/acl для установки ACL прав
+                self.proxmox.api.access.acl.put(
+                    users=userid,
+                    path=f"/pool/{poolid}",
+                    roles=permission,
+                    propagate=1  # Применить права к дочерним объектам
+                )
+
+            logger.info(f"Права пользователя {userid} на пул {poolid} установлены")
+            return True
+
         except Exception as e:
-            logger.error(f"Ошибка установки прав пользователя {user} на пул {pool_name}: {e}")
+            logger.error(f"Ошибка установки прав пользователя {userid}: {e}")
             return False
 
     def revoke_pool_permissions(self, user: str, pool_name: str) -> bool:
@@ -221,22 +226,6 @@ class PoolManager:
             logger.error(f"Ошибка получения списка VM в пуле {pool_name} через PoolManager: {e}")
             return []
 
-    def get_pool_resources(self, pool_name: str) -> List[Dict[str, Any]]:
-        """
-        Получить все ресурсы пула (VM, storage, etc.)
-
-        Args:
-            pool_name: Имя пула
-
-        Returns:
-            Список ресурсов пула
-        """
-        try:
-            return self.proxmox.api.pools(pool_name).get()
-        except Exception as e:
-            logger.error(f"Ошибка получения ресурсов пула {pool_name}: {e}")
-            return []
-
     def add_vm_to_pool(self, vmid: int, pool_name: str) -> bool:
         """
         Добавить VM в пул
@@ -255,89 +244,4 @@ class PoolManager:
             return True
         except Exception as e:
             logger.error(f"Ошибка добавления VM {vmid} в пул {pool_name}: {e}")
-            return False
-
-    def remove_vm_from_pool(self, vmid: int, pool_name: str) -> bool:
-        """
-        Удалить VM из пула
-
-        Args:
-            vmid: VMID машины
-            pool_name: Имя пула
-
-        Returns:
-            True если VM удалена из пула успешно
-        """
-        try:
-            # Получить текущий список VM в пуле
-            current_vms = self.get_pool_vms(pool_name)
-            current_vmids = [vm.get('vmid') for vm in current_vms if vm.get('vmid') != vmid]
-
-            # Обновить пул без этой VM
-            self.proxmox.api.pools(pool_name).put(vms=current_vmids)
-            logger.info(f"✅ VM {vmid} удалена из пула {pool_name}")
-            return True
-        except Exception as e:
-            logger.error(f"Ошибка удаления VM {vmid} из пула {pool_name}: {e}")
-            return False
-
-    def get_pool_statistics(self, pool_name: str) -> Dict[str, Any]:
-        """
-        Получить статистику пула
-
-        Args:
-            pool_name: Имя пула
-
-        Returns:
-            Статистика пула
-        """
-        try:
-            pool_vms = self.get_pool_vms(pool_name)
-            pool_info = self.get_pool_info(pool_name)
-
-            stats = {
-                'pool_name': pool_name,
-                'vm_count': len(pool_vms),
-                'total_vms': len(pool_vms),
-                'exists': pool_info is not None,
-                'comment': pool_info.get('comment', '') if pool_info else '',
-                'permissions': self.get_pool_permissions(pool_name),
-                'vms': []
-            }
-
-            # Дополнительная информация о VM
-            for vm in pool_vms:
-                vm_stats = {
-                    'vmid': vm.get('vmid'),
-                    'name': vm.get('name'),
-                    'node': vm.get('node'),
-                    'status': vm.get('status')
-                }
-                stats['vms'].append(vm_stats)
-
-            return stats
-
-        except Exception as e:
-            logger.error(f"Ошибка получения статистики пула {pool_name}: {e}")
-            return {
-                'pool_name': pool_name,
-                'error': str(e)
-            }
-
-    def _delete_pool_impl(self, pool_name: str) -> bool:
-        """
-        Реализация удаления пула в PoolManager
-        """
-        try:
-            pools = self.proxmox.api.pools.get()
-            if not any(p.get('poolid') == pool_name for p in pools):
-                logger.info(f"Пул {pool_name} не существует")
-                return True
-
-            self.proxmox.api.pools(pool_name).delete()
-            logger.info(f"Пул {pool_name} удален через PoolManager")
-            return True
-
-        except Exception as e:
-            logger.error(f"Ошибка удаления пула {pool_name} в PoolManager: {e}")
             return False

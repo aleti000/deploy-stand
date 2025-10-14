@@ -23,125 +23,78 @@ class UserManager:
         """
         self.proxmox = proxmox_client
 
-    def create_user_and_pool(self, user: str, password: str = None) -> Tuple[bool, str]:
+    def create_user(self, userid: str, password: str, groups: List[str] = None) -> bool:
         """
-        Создать пользователя и пул
+        Создать пользователя
 
         Args:
-            user: Имя пользователя в формате user@pve
-            password: Пароль пользователя (генерируется автоматически если не указан)
+            userid: ID пользователя (например, "student1@pve")
+            password: Пароль пользователя
+            groups: Список групп для пользователя
 
         Returns:
-            Кортеж (успех, пароль_пользователя)
+            True если создание успешно или пользователь уже существует
         """
         try:
-            # Генерация пароля если не указан
-            if password is None:
-                password = self._generate_password()
+            # Сначала проверить существует ли пользователь
+            if self.user_exists(userid):
+                logger.info(f"Пользователь {userid} уже существует")
+                return True
 
-            # Создание пользователя
-            if not self._create_user_impl(user, password):
-                logger.error(f"Не удалось создать пользователя {user}")
-                return False, ""
+            user_params = {
+                'userid': userid,
+                'password': password
+            }
 
-            logger.info(f"✅ Пользователь {user} создан")
+            if groups:
+                user_params['groups'] = ','.join(groups)
 
-            # Создание пула
-            pool_name = self._extract_pool_name(user)
-            if not self._create_pool_impl(pool_name, f"Pool for {user}"):
-                logger.error(f"Не удалось создать пул {pool_name} для пользователя {user}")
-                # Удалить созданного пользователя при неудаче создания пула
-                self._delete_user_impl(user)
-                return False, ""
-
-            logger.info(f"✅ Пул {pool_name} создан для пользователя {user}")
-
-            # Установка прав пользователя на пул
-            permissions = ["PVEVMAdmin"]
-            if not self._set_pool_permissions_impl(user, pool_name, permissions):
-                logger.error(f"Не удалось установить права для пользователя {user} на пул {pool_name}")
-                # Очистить созданные ресурсы при неудаче установки прав
-                self._delete_user_and_pool_impl(user, pool_name)
-                return False, ""
-
-            logger.info(f"✅ Права пользователя {user} на пул {pool_name} установлены")
-            return True, password
-
-        except Exception as e:
-            logger.error(f"Ошибка создания пользователя и пула для {user}: {e}")
-            return False, ""
-
-    def delete_user_and_pool(self, user: str) -> bool:
-        """
-        Удалить пользователя и его пул
-
-        Args:
-            user: Имя пользователя для удаления
-
-        Returns:
-            True если удаление успешно
-        """
-        try:
-            pool_name = self._extract_pool_name(user)
-
-            # Удалить виртуальные машины пользователя
-            if not self.delete_user_vms(user):
-                logger.warning(f"Не удалось удалить все VM пользователя {user}")
-
-            # Удалить пул
-            if not self.proxmox.delete_pool(pool_name):
-                logger.warning(f"Не удалось удалить пул {pool_name}")
-
-            # Удалить пользователя
-            if not self.proxmox.delete_user(user):
-                logger.error(f"Не удалось удалить пользователя {user}")
-                return False
-
-            logger.info(f"✅ Пользователь {user} и пул {pool_name} удалены")
+            self.proxmox.api.access.users.post(**user_params)
+            logger.info(f"Пользователь {userid} создан")
             return True
 
         except Exception as e:
-            logger.error(f"Ошибка удаления пользователя {user}: {e}")
+            logger.error(f"Ошибка создания пользователя {userid}: {e}")
+            # Если ошибка из-за того что пользователь уже существует - считаем успехом
+            if "already exists" in str(e) or "duplicate" in str(e).lower():
+                logger.info(f"Пользователь {userid} уже существует (обработано как успех)")
+                return True
             return False
 
-    def check_user_exists(self, user: str) -> bool:
+    def user_exists(self, userid: str) -> bool:
         """
-        Проверить существование пользователя
+        Проверить существует ли пользователь
 
         Args:
-            user: Имя пользователя для проверки
+            userid: ID пользователя
 
         Returns:
             True если пользователь существует
         """
         try:
-            # Попытаться получить информацию о пользователе через access API
-            if hasattr(self.proxmox, 'api') and hasattr(self.proxmox.api, 'access'):
-                users = self.proxmox.api.access.users.get()
-                return any(u.get('userid') == user for u in users)
-            else:
-                # Fallback для обратной совместимости
-                logger.warning(f"ProxmoxClient не имеет access API, пользователь {user} считается существующим")
-                return True
+            users = self.proxmox.api.access.users.get()
+            return any(user.get('userid') == userid for user in users)
         except Exception as e:
-            logger.error(f"Ошибка проверки существования пользователя {user}: {e}")
+            logger.error(f"Ошибка проверки существования пользователя {userid}: {e}")
             return False
 
-    def check_pool_exists(self, pool_name: str) -> bool:
+
+
+    def pool_exists(self, poolid: str) -> bool:
         """
-        Проверить существование пула
+        Проверить существует ли пул
 
         Args:
-            pool_name: Имя пула для проверки
+            poolid: ID пула
 
         Returns:
             True если пул существует
         """
         try:
             pools = self.proxmox.api.pools.get()
-            return any(p.get('poolid') == pool_name for p in pools)
+            return any(pool.get('poolid') == poolid for pool in pools)
         except Exception as e:
-            logger.error(f"Ошибка проверки существования пула {pool_name}: {e}")
+            logger.error(f"Ошибка проверки существования пула {poolid}: {e}")
             return False
 
     def grant_vm_permissions(self, user: str, node: str, vmid: int) -> bool:
@@ -287,21 +240,6 @@ class UserManager:
 
 
 
-    def _generate_password(self) -> str:
-        """
-        Сгенерировать случайный пароль для пользователя
-
-        Returns:
-            Случайный пароль
-        """
-        import secrets
-        import string
-
-        # Генерация пароля: 12 символов - буквы, цифры, спецсимволы
-        alphabet = string.ascii_letters + string.digits + "!@#$%^&*"
-        password = ''.join(secrets.choice(alphabet) for _ in range(12))
-        return password
-
     def build_user_name(self, pool: str, domain: str = "pve") -> str:
         """
         Построить полное имя пользователя из пула
@@ -345,152 +283,17 @@ class UserManager:
         pool_manager = PoolManager(None)
         return pool_manager.extract_pool_name(user)
 
-    def _cleanup_user(self, user: str) -> None:
-        """Очистить пользователя"""
-        try:
-            logger.info(f"Начинается очистка пользователя {user}")
-            # Здесь можно добавить дополнительную логику очистки
-            # Например, удаление из внешних систем учета
-        except Exception as e:
-            logger.error(f"Ошибка очистки пользователя {user}: {e}")
-
-    def _cleanup_user_and_pool(self, user: str, pool: str) -> None:
-        """Очистить пользователя и пул"""
-        try:
-            logger.info(f"Начинается очистка пользователя {user} и пула {pool}")
-            # Здесь можно добавить дополнительную логику очистки
-            # Например, удаление из внешних систем учета
-        except Exception as e:
-            logger.error(f"Ошибка очистки пользователя и пула: {e}")
-
-    def _create_user_impl(self, user: str, password: str) -> bool:
+    def _generate_password(self) -> str:
         """
-        Реализация создания пользователя в UserManager
+        Сгенерировать случайный пароль для пользователя
+
+        Returns:
+            Случайный пароль
         """
-        try:
-            # Сначала проверить существует ли пользователь - реализовать в UserManager
-            if self._check_user_exists_impl(user):
-                logger.info(f"Пользователь {user} уже существует")
-                return True
+        import secrets
+        import string
 
-            # Создать пользователя через API напрямую
-            user_params = {
-                'userid': user,
-                'password': password,
-                'comment': f'User {user}'
-            }
-
-            self.proxmox.api.access.users.post(**user_params)
-            logger.info(f"Пользователь {user} создан через UserManager")
-            return True
-
-        except Exception as e:
-            logger.error(f"Ошибка создания пользователя {user} в UserManager: {e}")
-            # Если ошибка из-за того что пользователь уже существует - считаем успехом
-            if "already exists" in str(e) or "duplicate" in str(e).lower():
-                logger.info(f"Пользователь {user} уже существует (обработано как успех)")
-                return True
-            return False
-
-    def _delete_user_impl(self, user: str) -> bool:
-        """
-        Реализация удаления пользователя в UserManager
-        """
-        try:
-            if not self.proxmox.check_user_exists(user):
-                logger.info(f"Пользователь {user} не существует")
-                return True
-
-            self.proxmox.api.access.users(user).delete()
-            logger.info(f"Пользователь {user} удален через UserManager")
-            return True
-
-        except Exception as e:
-            logger.error(f"Ошибка удаления пользователя {user} в UserManager: {e}")
-            return False
-
-    def _create_pool_impl(self, pool_name: str, comment: str = "") -> bool:
-        """
-        Реализация создания пула в UserManager
-        """
-        try:
-            # Сначала проверить существует ли пул
-            pools = self.proxmox.api.pools.get()
-            if any(p.get('poolid') == pool_name for p in pools):
-                logger.info(f"Пул {pool_name} уже существует")
-                return True
-
-            self.proxmox.api.pools.post(poolid=pool_name, comment=comment)
-            logger.info(f"Пул {pool_name} создан через UserManager")
-            return True
-
-        except Exception as e:
-            logger.error(f"Ошибка создания пула {pool_name} в UserManager: {e}")
-            # Если ошибка из-за того что пул уже существует - считаем успехом
-            if "already exists" in str(e) or "duplicate" in str(e).lower():
-                logger.info(f"Пул {pool_name} уже существует (обработано как успех)")
-                return True
-            return False
-
-    def _delete_pool_impl(self, pool_name: str) -> bool:
-        """
-        Реализация удаления пула в UserManager
-        """
-        try:
-            pools = self.proxmox.api.pools.get()
-            if not any(p.get('poolid') == pool_name for p in pools):
-                logger.info(f"Пул {pool_name} не существует")
-                return True
-
-            self.proxmox.api.pools(pool_name).delete()
-            logger.info(f"Пул {pool_name} удален через UserManager")
-            return True
-
-        except Exception as e:
-            logger.error(f"Ошибка удаления пула {pool_name} в UserManager: {e}")
-            return False
-
-    def _set_pool_permissions_impl(self, user: str, pool_name: str, permissions: List[str]) -> bool:
-        """
-        Реализация установки прав пользователя на пул в UserManager
-        """
-        try:
-            for permission in permissions:
-                # Используем PUT /access/acl для установки ACL прав
-                self.proxmox.api.access.acl.put(
-                    users=user,
-                    path=f"/pool/{pool_name}",
-                    roles=permission,
-                    propagate=1  # Применить права к дочерним объектам
-                )
-
-            logger.info(f"Права пользователя {user} на пул {pool_name} установлены через UserManager")
-            return True
-
-        except Exception as e:
-            logger.error(f"Ошибка установки прав пользователя {user} на пул {pool_name} в UserManager: {e}")
-            return False
-
-    def _delete_user_and_pool_impl(self, user: str, pool_name: str) -> None:
-        """
-        Реализация очистки пользователя и пула в UserManager при ошибке
-        """
-        try:
-            logger.info(f"Начинается очистка пользователя {user} и пула {pool_name} после ошибки")
-            # Сначала попробовать удалить пул
-            self._delete_pool_impl(pool_name)
-            # Потом пользователя
-            self._delete_user_impl(user)
-        except Exception as e:
-            logger.error(f"Ошибка очистки пользователя и пула после ошибки: {e}")
-
-    def _check_user_exists_impl(self, user: str) -> bool:
-        """
-        Проверка существования пользователя в UserManager
-        """
-        try:
-            users = self.proxmox.api.access.users.get()
-            return any(u.get('userid') == user for u in users)
-        except Exception as e:
-            logger.error(f"Ошибка проверки существования пользователя {user} в UserManager: {e}")
-            return False
+        # Генерация пароля: 12 символов - буквы, цифры, спецсимволы
+        alphabet = string.ascii_letters + string.digits + "!@#$%^&*"
+        password = ''.join(secrets.choice(alphabet) for _ in range(12))
+        return password
