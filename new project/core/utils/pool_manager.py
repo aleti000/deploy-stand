@@ -226,6 +226,24 @@ class PoolManager:
             logger.error(f"Ошибка получения списка VM в пуле {pool_name} через PoolManager: {e}")
             return []
 
+    def delete_pool(self, pool_name: str) -> bool:
+        """
+        Удалить пул
+
+        Args:
+            pool_name: Имя пула для удаления
+
+        Returns:
+            True если удаление успешно
+        """
+        try:
+            self.proxmox.api.pools(pool_name).delete()
+            logger.info(f"✅ Пул {pool_name} удален")
+            return True
+        except Exception as e:
+            logger.error(f"Ошибка удаления пула {pool_name}: {e}")
+            return False
+
     def add_vm_to_pool(self, vmid: int, pool_name: str) -> bool:
         """
         Добавить VM в пул

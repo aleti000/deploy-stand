@@ -161,7 +161,7 @@ class UserManager:
         try:
             vm_manager = VMManager(self.proxmox)
             pool_name = self._extract_pool_name(user)
-            pool_vms = self.proxmox.get_pool_vms(pool_name)
+            pool_vms = self.pool_manager.get_pool_vms(pool_name)
 
             if not pool_vms:
                 logger.info(f"У пользователя {user} нет виртуальных машин для удаления")
@@ -232,7 +232,8 @@ class UserManager:
         """
         try:
             pool_name = self._extract_pool_name(user)
-            pool_vms = self.proxmox.get_pool_vms(pool_name)
+            pool_manager = PoolManager(self.proxmox)
+            pool_vms = pool_manager.get_pool_vms(pool_name)
             return len(pool_vms)
         except Exception as e:
             logger.error(f"Ошибка получения количества VM пользователя {user}: {e}")
@@ -282,6 +283,24 @@ class UserManager:
         from .pool_manager import PoolManager
         pool_manager = PoolManager(None)
         return pool_manager.extract_pool_name(user)
+
+    def delete_user(self, user: str) -> bool:
+        """
+        Удалить пользователя
+
+        Args:
+            user: Имя пользователя для удаления
+
+        Returns:
+            True если удаление успешно
+        """
+        try:
+            self.proxmox.api.access.users(user).delete()
+            logger.info(f"✅ Пользователь {user} удален")
+            return True
+        except Exception as e:
+            logger.error(f"Ошибка удаления пользователя {user}: {e}")
+            return False
 
     def _generate_password(self) -> str:
         """
