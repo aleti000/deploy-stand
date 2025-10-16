@@ -1,0 +1,9 @@
+machines:
+- device_type: linux
+  full_clone: false
+  name: student-pc
+  networks:
+  - bridge: vmbr0
+  - bridge: hq.100
+  template_node: pve1
+  template_vmid: 100

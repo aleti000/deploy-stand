@@ -1,0 +1,13 @@
+default:
+  description: Подключение по умолчанию
+  host: 192.168.1.100:8006
+  use_token: false
+  user: root@pam
+test-connection:
+  description: Тестовое подключение
+  host: 192.168.1.100:8006
+  password: test_password
+  token_name: null
+  token_value: null
+  use_token: false
+  user: root@pam
