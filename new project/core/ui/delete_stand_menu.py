@@ -35,37 +35,33 @@ class DeleteStandMenu:
 
         # Инициализация менеджеров с текущим подключением
         try:
-            # Импортируем функцию получения текущего клиента
+            # Получаем настройки подключения из файла (аналогично stand_config_menu.py)
+            import yaml as yaml_module
+            connections_file = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "data", "connections_config.yml")
+
             try:
-                from main import get_current_proxmox_client
-                proxmox_client = get_current_proxmox_client()
-            except ImportError:
-                # Fallback: пытаемся получить из глобального контекста
-                try:
-                    import sys
-                    main_module = sys.modules.get('main') or sys.modules.get('__main__')
-                    if hasattr(main_module, 'current_connection'):
-                        # Создаем клиент на основе текущего подключения
-                        from ..utils.connection_manager import ConnectionManager
-                        from ..utils.proxmox_client import ProxmoxClient
-                        conn_manager = ConnectionManager()
-                        connections = conn_manager.load_connections()
-                        if connections:
-                            # Используем первое доступное подключение
-                            conn_data = list(connections.values())[0]
+                with open(connections_file, 'r', encoding='utf-8') as f:
+                    conn_data = yaml_module.safe_load(f)
+                    if conn_data and isinstance(conn_data, dict):
+                        # Берем первое доступное подключение
+                        active_conn_name = list(conn_data.keys())[0]
+                        conn_config = conn_data[active_conn_name]
+                        if conn_config:
+                            from ..utils.proxmox_client import ProxmoxClient
                             proxmox_client = ProxmoxClient(
-                                host=conn_data['host'],
-                                user=conn_data['user'],
-                                password=conn_data.get('password'),
-                                token_name=conn_data.get('token_name'),
-                                token_value=conn_data.get('token_value')
+                                host=conn_config['host'],
+                                user=conn_config.get('user', 'root@pam'),
+                                password=conn_config.get('password'),
+                                token_name=conn_config.get('token_name'),
+                                token_value=conn_config.get('token_value')
                             )
                         else:
                             proxmox_client = None
                     else:
                         proxmox_client = None
-                except Exception:
-                    proxmox_client = None
+            except Exception as e:
+                self.logger.error(f"Ошибка чтения файла подключений: {e}")
+                proxmox_client = None
 
             if not proxmox_client:
                 print("❌ Нет активного подключения к Proxmox")
@@ -256,65 +252,68 @@ class DeleteStandMenu:
         3. Найти все сетевые интерфейсы которые подключены к ВМ
         4. Удалить сетевые интерфейсы, удалить вм
         5. Когда все сетевые интерфейсы и все вм удалены - удалить пул и пользователя
+        6. Удалить bridge'ы пользователя и перезагрузить сеть
         """
         try:
-            logger.info(f"Начинаем удаление стенда пользователя {user}")
+            self.logger.info(f"Начинаем удаление стенда пользователя {user}")
 
             # ШАГ 1: Определить пул пользователя
             pool_name = self.pool_manager.extract_pool_name(user)
-            logger.info(f"Пользователь {user} принадлежит пулу {pool_name}")
+            self.logger.info(f"Пользователь {user} принадлежит пулу {pool_name}")
 
             # Проверить существование пула
             if not self.pool_manager.pool_exists(pool_name):
-                logger.warning(f"Пул {pool_name} не существует")
+                self.logger.warning(f"Пул {pool_name} не существует")
                 # Если пула нет, но пользователь существует - удаляем только пользователя
                 return self._delete_user_only(user)
 
             # ШАГ 2: Получить все VM в пуле
             pool_vms = self.pool_manager.get_pool_vms(pool_name)
             if not pool_vms:
-                logger.info(f"В пуле {pool_name} нет виртуальных машин")
+                self.logger.info(f"В пуле {pool_name} нет виртуальных машин")
                 # Нет VM, удаляем пул и пользователя
                 return self._delete_pool_and_user(pool_name, user)
 
-            logger.info(f"Найдено {len(pool_vms)} VM в пуле {pool_name}")
+            self.logger.info(f"Найдено {len(pool_vms)} VM в пуле {pool_name}")
 
             # ШАГ 3-4: Удалить все VM и их сетевые интерфейсы
             deleted_vms = 0
+            nodes_with_vms = set()  # Отслеживаем ноды для перезагрузки сети
+
             for vm_info in pool_vms:
                 vmid = vm_info.get('vmid')
                 node = vm_info.get('node')
 
                 if vmid and node:
+                    nodes_with_vms.add(node)  # Добавляем ноду для перезагрузки сети
+
                     # ШАГ 3: Найти сетевые интерфейсы VM
                     network_interfaces = self._get_vm_network_interfaces(node, vmid)
 
                     # ШАГ 4: Удалить сетевые интерфейсы (в Proxmox это происходит при удалении VM)
                     # Удаляем VM целиком
                     if self.vm_manager.delete_vm(node, vmid):
-                        logger.info(f"VM {vmid} пользователя {user} удалена")
+                        self.logger.info(f"VM {vmid} пользователя {user} удалена")
                         deleted_vms += 1
 
-                        # Ждем завершения операции
-                        task_up = False
-                        try:
-                            task_up = self.other_utils.wait_for_task_completion("", node, timeout=60)
-                        except:
-                            pass
-
-                        if not task_up:
-                            logger.warning(f"Не удалось дождаться завершения удаления VM {vmid}")
+                        # Даем небольшую паузу для завершения операции удаления
+                        import time
+                        time.sleep(2)
                     else:
-                        logger.error(f"Не удалось удалить VM {vmid} пользователя {user}")
+                        self.logger.error(f"Не удалось удалить VM {vmid} пользователя {user}")
                         return False
 
-            logger.info(f"Удалено VM пользователя {user}: {deleted_vms}/{len(pool_vms)}")
+            self.logger.info(f"Удалено VM пользователя {user}: {deleted_vms}/{len(pool_vms)}")
 
             # ШАГ 5: Когда все VM удалены - удалить пул и пользователя
-            return self._delete_pool_and_user(pool_name, user)
+            if not self._delete_pool_and_user(pool_name, user):
+                return False
+
+            # ШАГ 6: Удалить неиспользуемые bridge'ы пользователя и перезагрузить сеть
+            return self.network_manager.cleanup_user_bridges_and_reload_network(pool_name, list(nodes_with_vms))
 
         except Exception as e:
-            logger.error(f"Ошибка удаления стенда пользователя {user}: {e}")
+            self.logger.error(f"Ошибка удаления стенда пользователя {user}: {e}")
             return False
 
     def _get_vm_network_interfaces(self, node: str, vmid: int) -> List[str]:
@@ -322,10 +321,10 @@ class DeleteStandMenu:
         try:
             network_info = self.network_manager.get_network_info(node, vmid)
             interfaces = [net_id for net_id in network_info.keys() if net_id.startswith('net')]
-            logger.debug(f"VM {vmid} имеет сетевые интерфейсы: {interfaces}")
+            self.logger.debug(f"VM {vmid} имеет сетевые интерфейсы: {interfaces}")
             return interfaces
         except Exception as e:
-            logger.error(f"Ошибка получения сетевых интерфейсов VM {vmid}: {e}")
+            self.logger.error(f"Ошибка получения сетевых интерфейсов VM {vmid}: {e}")
             return []
 
     def _delete_pool_and_user(self, pool_name: str, user: str) -> bool:
@@ -335,35 +334,35 @@ class DeleteStandMenu:
 
             # Удалить пул
             if self.pool_manager.delete_pool(pool_name):
-                logger.info(f"Пул {pool_name} удален")
+                self.logger.info(f"Пул {pool_name} удален")
             else:
-                logger.error(f"Не удалось удалить пул {pool_name}")
+                self.logger.error(f"Не удалось удалить пул {pool_name}")
                 success = False
 
             # Удалить пользователя
             if self.user_manager.delete_user(user):
-                logger.info(f"Пользователь {user} удален")
+                self.logger.info(f"Пользователь {user} удален")
             else:
-                logger.error(f"Не удалось удалить пользователя {user}")
+                self.logger.error(f"Не удалось удалить пользователя {user}")
                 success = False
 
             return success
 
         except Exception as e:
-            logger.error(f"Ошибка удаления пула {pool_name} и пользователя {user}: {e}")
+            self.logger.error(f"Ошибка удаления пула {pool_name} и пользователя {user}: {e}")
             return False
 
     def _delete_user_only(self, user: str) -> bool:
         """Удалить только пользователя (если пула нет)"""
         try:
             if self.user_manager.delete_user(user):
-                logger.info(f"Пользователь {user} удален")
+                self.logger.info(f"Пользователь {user} удален")
                 return True
             else:
-                logger.error(f"Не удалось удалить пользователя {user}")
+                self.logger.error(f"Не удалось удалить пользователя {user}")
                 return False
         except Exception as e:
-            logger.error(f"Ошибка удаления пользователя {user}: {e}")
+            self.logger.error(f"Ошибка удаления пользователя {user}: {e}")
             return False
 
     def _get_all_users(self) -> List[Dict[str, Any]]:

@@ -130,23 +130,23 @@ class LocalDeployer:
                     nodes.add(node)
 
             for node in nodes:
-                self.logger.info(f"Перезагружаем сеть на ноде {node} после развертывания")
+                logger.info(f"Перезагружаем сеть на ноде {node} после развертывания")
                 try:
                     from ..utils.network_manager import NetworkManager
                     network_manager = NetworkManager(self.proxmox_client)
                     if network_manager.reload_network(node):
-                        self.logger.info(f"✅ Сеть ноды {node} перезагружена после развертывания")
+                        logger.info(f"✅ Сеть ноды {node} перезагружена после развертывания")
                     else:
-                        self.logger.warning(f"Не удалось перезагрузить сеть ноды {node}")
+                        logger.warning(f"Не удалось перезагрузить сеть ноды {node}")
                 except Exception as e:
-                    self.logger.error(f"Ошибка перезагрузки сети ноды {node}: {e}")
+                    logger.error(f"Ошибка перезагрузки сети ноды {node}: {e}")
 
         except Exception as e:
             self.logger.error(f"Ошибка перезагрузки сети после развертывания пользователя {user}: {e}")
 
     def _create_user_bridges(self, user: str, pool_name: str, config: Dict[str, Any]) -> Dict[str, str]:
         """
-        Создать необходимые bridge'ы для пользователя
+        Создать необходимые bridge'ы для пользователя с поддержкой VLAN
 
         Args:
             user: Имя пользователя
@@ -162,21 +162,16 @@ class LocalDeployer:
         # Определяем ноду
         node = config.get('machines', [{}])[0].get('template_node', 'srv1')
 
-        # Собираем все уникальные alias из всех машин
-        all_alias = set()
+        # Собираем все уникальные сети из всех машин
+        all_networks = []
         for machine_config in config.get('machines', []):
-            for network in machine_config.get('networks', []):
-                bridge_name = network.get('bridge')
-                if bridge_name and not bridge_name.startswith('**') and not bridge_name.startswith('vmbr'):
-                    all_alias.add(bridge_name)
+            all_networks.extend(machine_config.get('networks', []))
 
-        # Создаем bridge'ы для каждого уникального alias
-        bridge_mapping = {}
-        for alias in all_alias:
-            bridge_name = self._allocate_bridge_for_alias(node, alias, pool_name, network_manager)
-            bridge_mapping[alias] = bridge_name
-            logger.info(f"Пользователь {user}: alias '{alias}' -> bridge '{bridge_name}'")
+        # Используем NetworkManager для подготовки bridge mapping
+        # Передаем все сети для анализа и создания необходимых bridge'ей
+        bridge_mapping = network_manager._prepare_bridges_auto(node, all_networks, pool_name)
 
+        logger.info(f"Пользователь {user}: создан bridge mapping: {bridge_mapping}")
         return bridge_mapping
 
     def _allocate_bridge_for_alias(self, node: str, alias: str, pool_name: str, network_manager) -> str:
@@ -303,7 +298,7 @@ class LocalDeployer:
 
     def _prepare_network_configs_with_mapping(self, networks: List[Dict[str, Any]], bridge_mapping: Dict[str, str]) -> Dict[str, str]:
         """
-        Подготовить конфигурации сетевых интерфейсов с готовым mapping
+        Подготовить конфигурации сетевых интерфейсов с готовым mapping и поддержкой VLAN
 
         Args:
             networks: Конфигурация сетей
@@ -312,6 +307,11 @@ class LocalDeployer:
         Returns:
             Словарь конфигураций интерфейсов
         """
+        from ..utils.network_manager import NetworkManager
+
+        # Создаем временный экземпляр NetworkManager для разбора имен bridge
+        temp_network_manager = NetworkManager(self.proxmox_client)
+
         network_configs = {}
 
         for i, network in enumerate(networks):
@@ -329,7 +329,17 @@ class LocalDeployer:
                 actual_bridge = bridge_mapping.get(bridge_name, 'vmbr0')
 
             net_id = f"net{i}"
-            network_configs[net_id] = f'model=virtio,bridge={actual_bridge},firewall=1'
+
+            # Разбор имени bridge для определения VLAN
+            alias, vlan_id = temp_network_manager._parse_bridge_name(bridge_name)
+
+            if vlan_id is not None:
+                # VLAN интерфейс - добавляем tag
+                network_configs[net_id] = f'model=virtio,bridge={actual_bridge},tag={vlan_id},firewall=1'
+                logger.info(f"Настраиваем VLAN интерфейс {net_id} для VM: bridge={actual_bridge}, tag={vlan_id}")
+            else:
+                # Обычный интерфейс
+                network_configs[net_id] = f'model=virtio,bridge={actual_bridge},firewall=1'
 
         return network_configs
 
